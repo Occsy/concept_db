@@ -47,6 +47,6 @@ There is still much to do and I look forward to continue working on this project
 
 ## Anticipated updates
 
-    - Improved error handling 
+    - Improved error handling. 
     - simplification in some areas. 
-    - Functions will only alter tables corresponding to T
+    - Functions will only alter tables corresponding to T. 
