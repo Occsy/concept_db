@@ -136,7 +136,7 @@ pub mod elaborate {
 
         /// creates a new json file and inputs the table 
         /// created using the struct 
-        pub fn create_table(&self, table_name: String, contents: T) -> std::io::Result<&Self> { 
+        pub fn create_table(&self, table_name: String) -> std::io::Result<&Self> { 
 
             let path_root: &String  = &String::from("./db_files/"); 
 
@@ -148,9 +148,9 @@ pub mod elaborate {
                 return Ok(self); 
             }
 
-            let src = Fragment::new(contents).to_string();
+            let string_convert: String = self.to_string(); 
 
-            let mut src_bytes = src.as_bytes(); 
+            let mut src_bytes = string_convert.as_bytes(); 
 
             let inner_path: &String = &format!("{path_root}{}", table_name + ".json").to_string();  
 
