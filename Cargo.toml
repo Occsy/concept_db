@@ -1,6 +1,6 @@
 [package]
 name = "concept_db"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "A key-value DB for converting structs into a DB of assorted json files"
 license = "MIT"
