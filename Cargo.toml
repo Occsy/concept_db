@@ -1,6 +1,6 @@
 [package]
 name = "concept_db"
-version = "0.1.212"
+version = "0.1.213"
 edition = "2024"
 repository = "https://docs.rs/concept_db/latest/concept_db/"
 description = "A key-value DB for converting structs into a DB of assorted json files"
