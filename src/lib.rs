@@ -304,8 +304,10 @@ pub mod elaborate {
         pub fn left_join(
             &self,
             foreign_table: HashMap<String, Option<String>>,
-        ) -> Result<HashMap<String, String>, serde_json::Error> {
-            let mut self_hashed: HashMap<String, String> = self.to_hash().unwrap();
+        ) -> Result<HashMap<String, String>, TErrors> {
+            let Ok(mut self_hashed) = self.to_hash() else {
+                return Err(TErrors::HashConvert); 
+            };
 
             let key_vals: Vec<(String, String)> = foreign_table
                 .iter()
@@ -322,7 +324,7 @@ pub mod elaborate {
                             k2.clone(),
                             count_val(foreign_table.iter().collect(), k2.clone())
                         ),
-                        v2.clone().unwrap(),
+                        v2.clone().unwrap_or("".to_string())
                     );
                 })
                 .collect();
@@ -335,17 +337,22 @@ pub mod elaborate {
         }
 
         /// sorts tables based on key + value
-        pub fn build_where(&self, key: String, value: String) -> Vec<Self> {
+        pub fn build_where(&self, key: String, value: String) -> Result<Vec<Self>, TErrors> {
             let mut temp_vec: Vec<Fragment<T>> = Vec::new();
             for entry in fs::read_dir("./db_files/")
-                .unwrap()
+                .map_err(|_| {
+                    return TErrors::DirError; 
+                })?
                 .into_iter()
                 .filter_map(|f| f.ok())
             {
-                let contents: Fragment<T> = self
-                    .read_table(entry.path().to_string_lossy().to_string())
-                    .unwrap();
-                let hashed_contents: HashMap<String, String> = contents.to_hash().unwrap();
+                let Ok(contents) = self
+                    .read_table(entry.path().to_string_lossy().to_string()) else {
+                        return Err(TErrors::ReadByteError); 
+                    };
+                let Ok(hashed_contents) = contents.to_hash() else {
+                    return Err(TErrors::HashConvert); 
+                };
                 if hashed_contents.contains_key(&key)
                     && hashed_contents.get(&key).unwrap().trim().to_string()
                         == value.trim().to_string()
@@ -353,30 +360,53 @@ pub mod elaborate {
                     temp_vec.push(contents)
                 }
             }
-            temp_vec
+            Ok(temp_vec)
         }
 
         /// update key in table
-        pub fn update_table(&self, table_name: String, key: String, value: String) -> T {
-            let current_table: Self = self.read_table(table_name).unwrap();
+        pub fn update_table(&self, table_name: String, key: String, value: String) -> Result<T, TErrors> {
+            let Ok(current_table) = self.read_table(table_name) else {
+                return Err(TErrors::FileError); 
+            };
 
-            let mut hashed_table: HashMap<String, String> = current_table.to_hash().unwrap();
+            let Ok(mut hashed_table) = current_table.to_hash() else {
+                return Err(TErrors::HashConvert); 
+            };
 
             hashed_table.insert(key, value);
 
-            serde_json::from_str::<T>(&serde_json::to_string(&hashed_table).unwrap()).unwrap()
+            let Ok(hash_to_string) = &serde_json::to_string(&hashed_table) else {
+                return Err(TErrors::StringConvert); 
+            }; 
+
+            let Ok(output) = serde_json::from_str::<T>(hash_to_string) else {
+                return Err(TErrors::StringConvert); 
+            }; 
+
+            Ok(output)
         }
 
         /// updates table's key and value if value is type of Vec<String>
-        pub fn update_table_vec(&self, table_name: String, key: String, value: Vec<String>) -> T {
-            let current_table: Self = self.read_table(table_name).unwrap();
+        pub fn update_table_vec(&self, table_name: String, key: String, value: Vec<String>) -> Result<T, TErrors> {
+            let Ok(current_table) = self.read_table(table_name) else {
+                return Err(TErrors::FileError); 
+            };
 
-            let mut hashed_table: HashMap<String, Vec<String>> =
-                current_table.to_hash_vec().unwrap();
+            let Ok(mut hashed_table) = current_table.to_hash_vec() else {
+                return Err(TErrors::HashConvert); 
+            }; 
 
             hashed_table.insert(key, value);
 
-            serde_json::from_str::<T>(&serde_json::to_string(&hashed_table).unwrap()).unwrap()
+            let Ok(hash_to_string) = &serde_json::to_string(&hashed_table) else {
+                return Err(TErrors::HashConvert); 
+            }; 
+
+            let Ok(output) = serde_json::from_str::<T>(hash_to_string) else {
+                return Err(TErrors::StringConvert); 
+            }; 
+
+            Ok(output)
         }
     }
 }
