@@ -7,18 +7,38 @@ A DB designed to take in your struct and store across an array of JSON files.
 the following examples will follow the example of basic usage with Dog. 
 
 ```rust
-use concept_db::elaborate::Fragment; 
+use concept_db::elaborate::Fragment;
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
 struct Dog {
-    name: String, 
-    age: i8
+    name: String,
+    age: i8,
 }
 
-// impl Dog....
+impl Default for Dog {
+    fn default() -> Self where Self: DeserializeOwned{
+        Self {
+            name: "dog_name".to_string(),
+            age: 3,
+        }
+    }
+}
 
-fn main() {
-    let default_fragment: Fragment<Dog> = Fragment::new(Dog::default()); 
-    default_fragment.create_table("dog_table".to_string()); 
+impl Dog {
+    fn create_dog_table() -> std::io::Result<()> {
+        let dog_fragment: Fragment<Dog> = Fragment::new(Dog::default());
+
+        // This ACTUALLY writes the JSON file
+        dog_fragment.create_table("dog_table".to_string());
+
+        Ok(())
+    }
+}
+
+fn main() -> std::io::Result<()> {
+    Dog::create_dog_table()?;
+    Ok(())
 }
 ```
 
