@@ -29,7 +29,6 @@ impl Dog {
     fn create_dog_table() -> std::io::Result<()> {
         let dog_fragment: Fragment<Dog> = Fragment::new(Dog::default());
 
-        // This ACTUALLY writes the JSON file
         dog_fragment.create_table("dog_table".to_string());
 
         Ok(())
