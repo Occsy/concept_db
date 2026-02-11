@@ -37,7 +37,7 @@ fn main() {
 ```rust
 fn main() {
     let default_fragment: Fragment<Dog> = Fragment::new(Dog::default());
-    default_fragment.delete("dog_table".to_string())
+    default_fragment.delete("dog_table".to_string()); 
 } 
 ```
 
