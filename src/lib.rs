@@ -8,14 +8,23 @@ pub mod elaborate {
     use std::path::Path;
 
     #[derive(Debug)]
+    /// All errors converted into types from this enum 
     pub enum TErrors {
+        /// file doesnt exist
         FileNotFound,
+        /// error related file functions outside read/write
         FileError,
+        /// error manipulating Dir 
         DirError,
+        /// error reading file 
         ReadByteError,
+        /// error writing directory 
         WriteByteError,
+        /// error with conversions involving a string 
         StringConvert,
+        /// error converting hash
         HashConvert,
+        /// error deleting file 
         DeleteError,
     }
 
@@ -27,6 +36,8 @@ pub mod elaborate {
         fn to_hash_vec(&self) -> Result<HashMap<String, Vec<String>>, TErrors>;
     }
 
+    /// simplifies code in ToHash trait 
+    // why did I even make this??
     trait ToHashOpt {
         fn convert_opt(&self) -> HashMap<String, Option<String>>;
     }
