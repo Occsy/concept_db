@@ -30,21 +30,39 @@ pub mod elaborate {
         DeleteError,
     }
 
+    pub trait Collect<T: Serialize + DeserializeOwned + Sized + Clone + Debug> {
+        /// collects all tables across the JSON files that match type of T. 
+        fn collect(&self, frag: Fragment<T>) -> Result<Self, TErrors> where Self: Sized; 
+        /// adds a table of type T to collection. 
+        fn append(&mut self, obj: T) -> Self; 
+        /// removes an object of type T from the collection.
+        fn remove(&self, obj: T) -> Self where T: PartialEq; 
+        /// update an index to the provided object of type T. 
+        fn update_index(&self, index: usize, new_obj: T) -> Self;
+        /// write collection to json file.  
+        fn write_to_file(&self, title: String) -> Result<(), TErrors>  where Self: Serialize + DeserializeOwned + Clone + Debug; 
+    }
+
     /// covers the different kinds of HashMap that may be required for conversion
     /// from intended struct.
     pub trait ToHash {
+        /// converts T to HashMap.
         fn to_hash(&self) -> Result<HashMap<String, String>, TErrors>;
+        /// converts T to HashMap of String and Option of String.
         fn to_hash_opt(&self) -> Result<HashMap<String, Option<String>>, TErrors>;
+        /// converts T to HashMap of String and Vec of String.
         fn to_hash_vec(&self) -> Result<HashMap<String, Vec<String>>, TErrors>;
     }
 
     /// simplifies code in ToHash trait
     // why did I even make this??
     trait ToHashOpt {
+        /// converts T to HashMap of String and Option of String. 
         fn convert_opt(&self) -> HashMap<String, Option<String>>;
     }
 
     impl ToHashOpt for HashMap<String, String> {
+        /// impl of ToHashOpt.convert_opt()
         fn convert_opt(&self) -> HashMap<String, Option<String>> {
             let mut temp_hash: HashMap<String, Option<String>> = HashMap::new();
 
@@ -68,7 +86,7 @@ pub mod elaborate {
             .len()
     }
 
-    /// converts HashMap<String, String> to T
+    /// converts HashMap of String and String to T
     pub fn read_hash<T: Serialize + DeserializeOwned + Sized + Clone>(
         hash: HashMap<String, String>,
     ) -> Result<T, TErrors> {
@@ -423,6 +441,58 @@ pub mod elaborate {
             };
 
             Ok(output)
+        }
+    }
+
+    #[derive(Default)]
+    /// creates a collection of type T 
+    pub struct Collection<T: Serialize + DeserializeOwned + Sized + Clone> {
+        pub inner: Vec<T>
+    }
+
+    impl<T: Serialize + DeserializeOwned + Sized + Clone + Debug> Collect<T> for Collection<T> {
+        fn collect(&self, frag: Fragment<T>) -> Result<Self, TErrors> where Self: Sized{
+            let all_inferred: Vec<T> = frag.get_all_infer().unwrap().into_iter().map(|f| {
+                f.inner
+            }).collect(); 
+
+            Ok(Self {
+                inner: all_inferred
+            })    
+        }
+
+        fn append(&mut self, obj: T) -> Self {
+            self.inner.push(obj); 
+            Self {
+                inner: self.inner.clone()    
+            }
+        }
+
+        fn remove(&self, obj: T) -> Self where T: PartialEq{
+            Self {
+                inner: self.inner.clone().into_iter().filter(|f| *f != obj).collect::<Vec<T>>()
+            }
+        }
+
+        fn update_index(&self, index: usize, new_obj: T) -> Self {
+            Self {
+                inner: self.inner.clone().into_iter().enumerate().map(|(i, mut f)| {
+                    if i == index {
+                        f = new_obj.clone()
+                    }
+                    f
+                }).collect::<Vec<T>>()
+            }
+        }
+
+        fn write_to_file(&self, title: String) -> Result<(), TErrors> where Self: Serialize + DeserializeOwned + Clone + Debug {
+            let frag: Fragment<Self> = Fragment::new(self.clone()); 
+
+            frag.create_table(title).map_err(|_| {
+                return TErrors::FileError; 
+            })?; 
+
+            Ok(())
         }
     }
 }

@@ -1,6 +1,6 @@
 [package]
 name = "concept_db"
-version = "0.1.216"
+version = "0.1.226"
 edition = "2024"
 authors = ["Julian Mendez <Jul1anMendez@proton.me>"]
 email = "Jul1anMendez@proton.me"
