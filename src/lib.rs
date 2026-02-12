@@ -354,7 +354,7 @@ pub mod elaborate {
                     return Err(TErrors::HashConvert); 
                 };
                 if hashed_contents.contains_key(&key)
-                    && hashed_contents.get(&key).unwrap().trim().to_string()
+                    && hashed_contents.get(&key).unwrap_or(&"".to_string()).trim().to_string()
                         == value.trim().to_string()
                 {
                     temp_vec.push(contents)
