@@ -1,30 +1,32 @@
 pub mod elaborate {
     use serde::{Serialize, de::DeserializeOwned};
     use serde_json::to_string;
-    use std::collections::HashMap;
-    use std::fmt::Debug;
-    use std::fs::{self, DirEntry, File};
-    use std::io::{BufReader, Read, Write};
-    use std::path::Path;
+    use std::{
+        collections::HashMap,
+        fmt::Debug,
+        fs::{self, DirEntry, File},
+        io::{BufReader, Read, Write},
+        path::Path,
+    };
 
     #[derive(Debug)]
-    /// All errors converted into types from this enum 
+    /// All errors converted into types from this enum
     pub enum TErrors {
         /// file doesnt exist
         FileNotFound,
         /// error related file functions outside read/write
         FileError,
-        /// error manipulating Dir 
+        /// error manipulating Dir
         DirError,
-        /// error reading file 
+        /// error reading file
         ReadByteError,
-        /// error writing directory 
+        /// error writing directory
         WriteByteError,
-        /// error with conversions involving a string 
+        /// error with conversions involving a string
         StringConvert,
         /// error converting hash
         HashConvert,
-        /// error deleting file 
+        /// error deleting file
         DeleteError,
     }
 
@@ -36,7 +38,7 @@ pub mod elaborate {
         fn to_hash_vec(&self) -> Result<HashMap<String, Vec<String>>, TErrors>;
     }
 
-    /// simplifies code in ToHash trait 
+    /// simplifies code in ToHash trait
     // why did I even make this??
     trait ToHashOpt {
         fn convert_opt(&self) -> HashMap<String, Option<String>>;
@@ -306,7 +308,7 @@ pub mod elaborate {
             foreign_table: HashMap<String, Option<String>>,
         ) -> Result<HashMap<String, String>, TErrors> {
             let Ok(mut self_hashed) = self.to_hash() else {
-                return Err(TErrors::HashConvert); 
+                return Err(TErrors::HashConvert);
             };
 
             let key_vals: Vec<(String, String)> = foreign_table
@@ -324,7 +326,7 @@ pub mod elaborate {
                             k2.clone(),
                             count_val(foreign_table.iter().collect(), k2.clone())
                         ),
-                        v2.clone().unwrap_or("".to_string())
+                        v2.clone().unwrap_or("".to_string()),
                     );
                 })
                 .collect();
@@ -341,20 +343,24 @@ pub mod elaborate {
             let mut temp_vec: Vec<Fragment<T>> = Vec::new();
             for entry in fs::read_dir("./db_files/")
                 .map_err(|_| {
-                    return TErrors::DirError; 
+                    return TErrors::DirError;
                 })?
                 .into_iter()
                 .filter_map(|f| f.ok())
             {
-                let Ok(contents) = self
-                    .read_table(entry.path().to_string_lossy().to_string()) else {
-                        return Err(TErrors::ReadByteError); 
-                    };
+                let Ok(contents) = self.read_table(entry.path().to_string_lossy().to_string())
+                else {
+                    return Err(TErrors::ReadByteError);
+                };
                 let Ok(hashed_contents) = contents.to_hash() else {
-                    return Err(TErrors::HashConvert); 
+                    return Err(TErrors::HashConvert);
                 };
                 if hashed_contents.contains_key(&key)
-                    && hashed_contents.get(&key).unwrap_or(&"".to_string()).trim().to_string()
+                    && hashed_contents
+                        .get(&key)
+                        .unwrap_or(&"".to_string())
+                        .trim()
+                        .to_string()
                         == value.trim().to_string()
                 {
                     temp_vec.push(contents)
@@ -364,47 +370,57 @@ pub mod elaborate {
         }
 
         /// update key in table
-        pub fn update_table(&self, table_name: String, key: String, value: String) -> Result<T, TErrors> {
+        pub fn update_table(
+            &self,
+            table_name: String,
+            key: String,
+            value: String,
+        ) -> Result<T, TErrors> {
             let Ok(current_table) = self.read_table(table_name) else {
-                return Err(TErrors::FileError); 
+                return Err(TErrors::FileError);
             };
 
             let Ok(mut hashed_table) = current_table.to_hash() else {
-                return Err(TErrors::HashConvert); 
+                return Err(TErrors::HashConvert);
             };
 
             hashed_table.insert(key, value);
 
             let Ok(hash_to_string) = &serde_json::to_string(&hashed_table) else {
-                return Err(TErrors::StringConvert); 
-            }; 
+                return Err(TErrors::StringConvert);
+            };
 
             let Ok(output) = serde_json::from_str::<T>(hash_to_string) else {
-                return Err(TErrors::StringConvert); 
-            }; 
+                return Err(TErrors::StringConvert);
+            };
 
             Ok(output)
         }
 
         /// updates table's key and value if value is type of Vec<String>
-        pub fn update_table_vec(&self, table_name: String, key: String, value: Vec<String>) -> Result<T, TErrors> {
+        pub fn update_table_vec(
+            &self,
+            table_name: String,
+            key: String,
+            value: Vec<String>,
+        ) -> Result<T, TErrors> {
             let Ok(current_table) = self.read_table(table_name) else {
-                return Err(TErrors::FileError); 
+                return Err(TErrors::FileError);
             };
 
             let Ok(mut hashed_table) = current_table.to_hash_vec() else {
-                return Err(TErrors::HashConvert); 
-            }; 
+                return Err(TErrors::HashConvert);
+            };
 
             hashed_table.insert(key, value);
 
             let Ok(hash_to_string) = &serde_json::to_string(&hashed_table) else {
-                return Err(TErrors::HashConvert); 
-            }; 
+                return Err(TErrors::HashConvert);
+            };
 
             let Ok(output) = serde_json::from_str::<T>(hash_to_string) else {
-                return Err(TErrors::StringConvert); 
-            }; 
+                return Err(TErrors::StringConvert);
+            };
 
             Ok(output)
         }

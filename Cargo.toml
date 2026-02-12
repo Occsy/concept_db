@@ -2,6 +2,8 @@
 name = "concept_db"
 version = "0.1.214"
 edition = "2024"
+authors = ["Julian Mendez"]
+email = "Jul1anMendez@proton.me"
 repository = "https://docs.rs/concept_db/latest/concept_db/"
 description = "A key-value DB for converting structs into a DB of assorted json files"
 license = "MIT"

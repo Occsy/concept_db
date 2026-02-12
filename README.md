@@ -64,8 +64,13 @@ fn main() {
 
 There is still much to do and I look forward to continue working on this project. 
 
+### Also...
+
+I would love any recommendations and help if able. 
+
+
 ## Anticipated updates
 
-    - Improved error handling. 
+    - Logger (most likely separate crate) 
     - simplification in some areas. 
     - Functions will only alter tables corresponding to T. 
