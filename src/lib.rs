@@ -62,6 +62,31 @@ pub mod elaborate {
         fn zip(&self) -> Result<Vec<(String, String)>, TErrors>;
     }
 
+    pub trait ToLog<T: Serialize + DeserializeOwned + Sized + Clone + Debug> {
+        /// updates initial state
+        fn set_prior(&self, prior: T) -> Self; 
+        /// intended to set updated state on completion for comparision (to be developed)
+        fn set_later(&self, later: T) -> Self; 
+        /// sets the time at which change occured.
+        fn set_time_stamp(&self, time_stamp: String) -> Self;
+        /// this is experimental. it wont work for HashMap of String and Vec of T
+        fn raw_changes(
+            &self
+        ) -> Result<(Vec<(String, String)>, Vec<(String, String)>), TErrors>;  
+    }
+
+    pub trait ToLogCollect<T: Serialize + DeserializeOwned + Sized + Clone + Debug> {
+        /// updates initial state
+        fn set_prior(&self, prior: Collection<T>) -> Self; 
+        /// intended to set updated state on completion for comparision (to be developed)
+        fn set_later(&self, later: Collection<T>) -> Self; 
+        /// sets the time at which change occured.
+        fn set_time_stamp(&self, time_stamp: String) -> Self;
+        /// makes comparison between before and after (still under development)
+        /// This has a lot more to be added 
+        fn raw_changes_collect(&self) -> Result<(Vec<T>, Vec<T>), TErrors>; 
+    }
+
     /// simplifies code in ToHash trait
     // why did I even make this??
     trait ToHashOpt {
@@ -309,10 +334,13 @@ pub mod elaborate {
         }
 
         /// returns only matching initial type of T
-        pub fn get_all_infer(&self) -> std::io::Result<Vec<Fragment<T>>> {
+        pub fn get_all_infer(&self) -> Result<Vec<Fragment<T>>, TErrors> {
             let mut temp_vec: Vec<Fragment<T>> = Vec::new();
 
-            for entry in fs::read_dir("./db_files/")?
+            for entry in fs::read_dir("./db_files/")
+                .map_err(|_| {
+                    return TErrors::DirError; 
+                })?
                 .into_iter()
                 .filter_map(|f| f.ok())
             {
@@ -465,7 +493,7 @@ pub mod elaborate {
         }
     }
 
-    #[derive(Default)]
+    #[derive(Default, Clone)]
     /// creates a collection of type T
     pub struct Collection<T: Serialize + DeserializeOwned + Sized + Clone> {
         pub inner: Vec<T>,
@@ -542,14 +570,13 @@ pub mod elaborate {
 
     /// A simple logger for actions done
     pub struct Logger<T: Serialize + DeserializeOwned + Sized + Clone + Debug> {
-        prior: T,
-        later: T,
-        time_stamp: String,
+        pub prior: T,
+        pub later: T,
+        pub time_stamp: String,
     }
 
-    impl<T: Serialize + DeserializeOwned + Sized + Clone + Debug> Logger<T> {
-        /// updates initial state
-        pub fn set_prior(&self, prior: T) -> Self {
+    impl<T: Serialize + DeserializeOwned + Sized + Clone + Debug> ToLog<T> for Logger<T> {
+        fn set_prior(&self, prior: T) -> Self {
             Self {
                 prior: prior.clone(),
                 later: self.later.clone(),
@@ -557,8 +584,7 @@ pub mod elaborate {
             }
         }
 
-        /// intended to set updated state on completion for comparision (to be developed)
-        pub fn set_later(&self, later: T) -> Self {
+        fn set_later(&self, later: T) -> Self {
             Self {
                 prior: self.prior.clone(),
                 later: later.clone(),
@@ -566,8 +592,7 @@ pub mod elaborate {
             }
         }
 
-        /// sets the time at which change occured.
-        pub fn set_time_stamp(&self, time_stamp: String) -> Self {
+        fn set_time_stamp(&self, time_stamp: String) -> Self {
             Self {
                 prior: self.prior.clone(),
                 later: self.later.clone(),
@@ -575,9 +600,8 @@ pub mod elaborate {
             }
         }
 
-        /// this is experimental. it wont work for HashMap of String and Vec of T
-        pub fn raw_changes(
-            &self,
+        fn raw_changes(
+            &self
         ) -> Result<(Vec<(String, String)>, Vec<(String, String)>), TErrors> {
             let prior_frag: Fragment<T> = Fragment::new(self.prior.clone());
             let later_frag: Fragment<T> = Fragment::new(self.later.clone());
@@ -586,4 +610,41 @@ pub mod elaborate {
             Ok((left_vec, right_vec))
         }
     }
+    pub struct CollectLogger<T: Serialize + DeserializeOwned + Sized + Clone + Debug> {
+        pub prior: Collection<T>,
+        pub later: Collection<T>,
+        pub time_stamp: String 
+    }
+
+    impl<T: Serialize + DeserializeOwned + Sized + Clone + Debug + PartialEq> ToLogCollect<T> for CollectLogger<T> {
+        fn set_prior(&self, prior: Collection<T>) -> Self {
+            Self {
+                prior: prior.clone(),
+                later: self.later.clone(),
+                time_stamp: self.time_stamp.clone(),
+            }
+        }
+
+        fn set_later(&self, later: Collection<T>) -> Self {
+            Self {
+                prior: self.prior.clone(),
+                later: later.clone(),
+                time_stamp: self.time_stamp.clone(),
+            }
+        }
+
+        fn set_time_stamp(&self, time_stamp: String) -> Self {
+            Self {
+                prior: self.prior.clone(),
+                later: self.later.clone(),
+                time_stamp: time_stamp.clone(),
+            }
+        }
+
+        fn raw_changes_collect(&self) -> Result<(Vec<T>, Vec<T>), TErrors> {
+            let added: Vec<T> = self.later.inner.clone().into_iter().filter(|f| !self.prior.inner.contains(f)).collect(); 
+            let removed: Vec<T> = self.prior.inner.clone().into_iter().filter(|f| !self.later.inner.contains(f)).collect(); 
+            Ok((added, removed))  
+        }
+    } 
 }
