@@ -2,11 +2,14 @@
 name = "concept_db"
 version = "0.1.215"
 edition = "2024"
-authors = ["Julian Mendez"]
+authors = ["Julian Mendez <Jul1anMendez@proton.me>"]
 email = "Jul1anMendez@proton.me"
 repository = "https://docs.rs/concept_db/latest/concept_db/"
 description = "A key-value DB for converting structs into a DB of assorted json files"
 license = "MIT"
+
+[package.metadata]
+email = "Jul1anMendez@proton.me"
 
 [dependencies]
 serde = { version = "1.0.228", features = ["derive"] }
