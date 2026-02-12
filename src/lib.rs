@@ -31,16 +31,22 @@ pub mod elaborate {
     }
 
     pub trait Collect<T: Serialize + DeserializeOwned + Sized + Clone + Debug> {
-        /// collects all tables across the JSON files that match type of T. 
-        fn collect(&self, frag: Fragment<T>) -> Result<Self, TErrors> where Self: Sized; 
-        /// adds a table of type T to collection. 
-        fn append(&mut self, obj: T) -> Self; 
+        /// collects all tables across the JSON files that match type of T.
+        fn collect(&self, frag: Fragment<T>) -> Result<Self, TErrors>
+        where
+            Self: Sized;
+        /// adds a table of type T to collection.
+        fn append(&mut self, obj: T) -> Self;
         /// removes an object of type T from the collection.
-        fn remove(&self, obj: T) -> Self where T: PartialEq; 
-        /// update an index to the provided object of type T. 
+        fn remove(&self, obj: T) -> Self
+        where
+            T: PartialEq;
+        /// update an index to the provided object of type T.
         fn update_index(&self, index: usize, new_obj: T) -> Self;
         /// write collection to json file.  
-        fn write_to_file(&self, title: String) -> Result<(), TErrors>  where Self: Serialize + DeserializeOwned + Clone + Debug; 
+        fn write_to_file(&self, title: String) -> Result<(), TErrors>
+        where
+            Self: Serialize + DeserializeOwned + Clone + Debug;
     }
 
     /// covers the different kinds of HashMap that may be required for conversion
@@ -52,12 +58,14 @@ pub mod elaborate {
         fn to_hash_opt(&self) -> Result<HashMap<String, Option<String>>, TErrors>;
         /// converts T to HashMap of String and Vec of String.
         fn to_hash_vec(&self) -> Result<HashMap<String, Vec<String>>, TErrors>;
+        /// converts hashmap to Vec of tuple of String and String. 
+        fn zip(&self) -> Result<Vec<(String, String)>, TErrors>; 
     }
 
     /// simplifies code in ToHash trait
     // why did I even make this??
     trait ToHashOpt {
-        /// converts T to HashMap of String and Option of String. 
+        /// converts T to HashMap of String and Option of String.
         fn convert_opt(&self) -> HashMap<String, Option<String>>;
     }
 
@@ -154,6 +162,20 @@ pub mod elaborate {
 
             Ok(output)
         }
+
+        fn zip(&self) -> Result<Vec<(String, String)>, TErrors> {
+            let mut _temp_vec: Vec<(String, String)> = Vec::new();
+            if let Ok(vec_hash) = self.to_hash() {
+                let keys = vec_hash.clone().into_keys().collect::<Vec<String>>();
+                let values = vec_hash.into_values().collect::<Vec<String>>(); 
+                _temp_vec = keys.iter().map(|d| d.clone()).zip(values).collect();
+                return Ok(_temp_vec);   
+            } else {
+                println!("This is an error still in work. Try raw_changes_collect.");
+                return  Err(TErrors::HashConvert); 
+            }
+        }
+
     }
 
     impl<T: Serialize + DeserializeOwned + Sized + Clone + Debug> Fragment<T> {
@@ -445,54 +467,122 @@ pub mod elaborate {
     }
 
     #[derive(Default)]
-    /// creates a collection of type T 
+    /// creates a collection of type T
     pub struct Collection<T: Serialize + DeserializeOwned + Sized + Clone> {
-        pub inner: Vec<T>
+        pub inner: Vec<T>,
     }
 
     impl<T: Serialize + DeserializeOwned + Sized + Clone + Debug> Collect<T> for Collection<T> {
-        fn collect(&self, frag: Fragment<T>) -> Result<Self, TErrors> where Self: Sized{
-            let all_inferred: Vec<T> = frag.get_all_infer().unwrap().into_iter().map(|f| {
-                f.inner
-            }).collect(); 
+        fn collect(&self, frag: Fragment<T>) -> Result<Self, TErrors>
+        where
+            Self: Sized,
+        {
+            let all_inferred: Vec<T> = frag
+                .get_all_infer()
+                .unwrap()
+                .into_iter()
+                .map(|f| f.inner)
+                .collect();
 
             Ok(Self {
-                inner: all_inferred
-            })    
+                inner: all_inferred,
+            })
         }
 
         fn append(&mut self, obj: T) -> Self {
-            self.inner.push(obj); 
+            self.inner.push(obj);
             Self {
-                inner: self.inner.clone()    
+                inner: self.inner.clone(),
             }
         }
 
-        fn remove(&self, obj: T) -> Self where T: PartialEq{
+        fn remove(&self, obj: T) -> Self
+        where
+            T: PartialEq,
+        {
             Self {
-                inner: self.inner.clone().into_iter().filter(|f| *f != obj).collect::<Vec<T>>()
+                inner: self
+                    .inner
+                    .clone()
+                    .into_iter()
+                    .filter(|f| *f != obj)
+                    .collect::<Vec<T>>(),
             }
         }
 
         fn update_index(&self, index: usize, new_obj: T) -> Self {
             Self {
-                inner: self.inner.clone().into_iter().enumerate().map(|(i, mut f)| {
-                    if i == index {
-                        f = new_obj.clone()
-                    }
-                    f
-                }).collect::<Vec<T>>()
+                inner: self
+                    .inner
+                    .clone()
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, mut f)| {
+                        if i == index {
+                            f = new_obj.clone()
+                        }
+                        f
+                    })
+                    .collect::<Vec<T>>(),
             }
         }
 
-        fn write_to_file(&self, title: String) -> Result<(), TErrors> where Self: Serialize + DeserializeOwned + Clone + Debug {
-            let frag: Fragment<Self> = Fragment::new(self.clone()); 
+        fn write_to_file(&self, title: String) -> Result<(), TErrors>
+        where
+            Self: Serialize + DeserializeOwned + Clone + Debug,
+        {
+            let frag: Fragment<Self> = Fragment::new(self.clone());
 
             frag.create_table(title).map_err(|_| {
-                return TErrors::FileError; 
-            })?; 
+                return TErrors::FileError;
+            })?;
 
             Ok(())
         }
+    }
+
+    /// A simple logger for actions done 
+    pub struct Logger<T: Serialize + DeserializeOwned + Sized + Clone + Debug>  {
+        prior: T, 
+        later: T, 
+        time_stamp: String
+    }
+
+    impl<T: Serialize + DeserializeOwned + Sized + Clone + Debug> Logger<T> {
+        /// updates initial state
+        pub fn set_prior(&self, prior: T) -> Self {
+            Self {
+                prior: prior.clone(),
+                later: self.later.clone(), 
+                time_stamp: self.time_stamp.clone() 
+            }
+        }
+
+        /// intended to set updated state on completion for comparision (to be developed)
+        pub fn set_later(&self, later: T) -> Self {
+            Self {
+                prior: self.prior.clone(), 
+                later: later.clone(), 
+                time_stamp: self.time_stamp.clone()
+            }
+        }
+
+        /// sets the time at which change occured. 
+        pub fn set_time_stamp(&self, time_stamp: String) -> Self {
+            Self {
+                prior: self.prior.clone(), 
+                later: self.later.clone(), 
+                time_stamp: time_stamp.clone()
+            }
+        }
+
+        /// this is experimental. it wont work for HashMap of String and Vec of T 
+        pub fn raw_changes(&self) -> Result<(Vec<(String, String)>, Vec<(String, String)>), TErrors> {
+            let prior_frag: Fragment<T> = Fragment::new(self.prior.clone());
+            let later_frag: Fragment<T> = Fragment::new(self.later.clone()); 
+            let left_vec: Vec<(String, String)> = prior_frag.zip()?; 
+            let right_vec: Vec<(String, String)> = later_frag.zip()?; 
+            Ok((left_vec, right_vec))
+        } 
     }
 }

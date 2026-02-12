@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "concept_db"
-version = "0.1.226"
+version = "0.1.229"
 dependencies = [
  "serde",
  "serde_json",
