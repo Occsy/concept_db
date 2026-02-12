@@ -58,8 +58,8 @@ pub mod elaborate {
         fn to_hash_opt(&self) -> Result<HashMap<String, Option<String>>, TErrors>;
         /// converts T to HashMap of String and Vec of String.
         fn to_hash_vec(&self) -> Result<HashMap<String, Vec<String>>, TErrors>;
-        /// converts hashmap to Vec of tuple of String and String. 
-        fn zip(&self) -> Result<Vec<(String, String)>, TErrors>; 
+        /// converts hashmap to Vec of tuple of String and String.
+        fn zip(&self) -> Result<Vec<(String, String)>, TErrors>;
     }
 
     /// simplifies code in ToHash trait
@@ -167,15 +167,14 @@ pub mod elaborate {
             let mut _temp_vec: Vec<(String, String)> = Vec::new();
             if let Ok(vec_hash) = self.to_hash() {
                 let keys = vec_hash.clone().into_keys().collect::<Vec<String>>();
-                let values = vec_hash.into_values().collect::<Vec<String>>(); 
+                let values = vec_hash.into_values().collect::<Vec<String>>();
                 _temp_vec = keys.iter().map(|d| d.clone()).zip(values).collect();
-                return Ok(_temp_vec);   
+                return Ok(_temp_vec);
             } else {
                 println!("This is an error still in work. Try raw_changes_collect.");
-                return  Err(TErrors::HashConvert); 
+                return Err(TErrors::HashConvert);
             }
         }
-
     }
 
     impl<T: Serialize + DeserializeOwned + Sized + Clone + Debug> Fragment<T> {
@@ -541,11 +540,11 @@ pub mod elaborate {
         }
     }
 
-    /// A simple logger for actions done 
-    pub struct Logger<T: Serialize + DeserializeOwned + Sized + Clone + Debug>  {
-        prior: T, 
-        later: T, 
-        time_stamp: String
+    /// A simple logger for actions done
+    pub struct Logger<T: Serialize + DeserializeOwned + Sized + Clone + Debug> {
+        prior: T,
+        later: T,
+        time_stamp: String,
     }
 
     impl<T: Serialize + DeserializeOwned + Sized + Clone + Debug> Logger<T> {
@@ -553,36 +552,38 @@ pub mod elaborate {
         pub fn set_prior(&self, prior: T) -> Self {
             Self {
                 prior: prior.clone(),
-                later: self.later.clone(), 
-                time_stamp: self.time_stamp.clone() 
+                later: self.later.clone(),
+                time_stamp: self.time_stamp.clone(),
             }
         }
 
         /// intended to set updated state on completion for comparision (to be developed)
         pub fn set_later(&self, later: T) -> Self {
             Self {
-                prior: self.prior.clone(), 
-                later: later.clone(), 
-                time_stamp: self.time_stamp.clone()
+                prior: self.prior.clone(),
+                later: later.clone(),
+                time_stamp: self.time_stamp.clone(),
             }
         }
 
-        /// sets the time at which change occured. 
+        /// sets the time at which change occured.
         pub fn set_time_stamp(&self, time_stamp: String) -> Self {
             Self {
-                prior: self.prior.clone(), 
-                later: self.later.clone(), 
-                time_stamp: time_stamp.clone()
+                prior: self.prior.clone(),
+                later: self.later.clone(),
+                time_stamp: time_stamp.clone(),
             }
         }
 
-        /// this is experimental. it wont work for HashMap of String and Vec of T 
-        pub fn raw_changes(&self) -> Result<(Vec<(String, String)>, Vec<(String, String)>), TErrors> {
+        /// this is experimental. it wont work for HashMap of String and Vec of T
+        pub fn raw_changes(
+            &self,
+        ) -> Result<(Vec<(String, String)>, Vec<(String, String)>), TErrors> {
             let prior_frag: Fragment<T> = Fragment::new(self.prior.clone());
-            let later_frag: Fragment<T> = Fragment::new(self.later.clone()); 
-            let left_vec: Vec<(String, String)> = prior_frag.zip()?; 
-            let right_vec: Vec<(String, String)> = later_frag.zip()?; 
+            let later_frag: Fragment<T> = Fragment::new(self.later.clone());
+            let left_vec: Vec<(String, String)> = prior_frag.zip()?;
+            let right_vec: Vec<(String, String)> = later_frag.zip()?;
             Ok((left_vec, right_vec))
-        } 
+        }
     }
 }
