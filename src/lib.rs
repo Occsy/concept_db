@@ -29,45 +29,48 @@ pub mod elaborate {
         /// error deleting file
         DeleteError,
         /// error reading collection
-        CollectReadError, 
-        /// not ideal but meant for ease of use with Commit 
+        CollectReadError,
+        /// not ideal but meant for ease of use with Commit
         #[default]
-        None 
+        None,
     }
 
     /// An output design for the Logger
-    pub struct Commit<T: Serialize + DeserializeOwned + Sized + Clone + Debug>  {
-        pub success: bool, 
-        pub package: Result<T, TErrors>, 
-        pub collection: Result<Collection<T>, TErrors>
+    pub struct Commit<T: Serialize + DeserializeOwned + Sized + Clone + Debug> {
+        pub success: bool,
+        pub package: Result<T, TErrors>,
+        pub collection: Result<Collection<T>, TErrors>,
     }
 
     impl<T: Serialize + DeserializeOwned + Sized + Clone + Debug> Default for Commit<T> {
         fn default() -> Self {
             Self {
-                success: false, 
-                package: Err(TErrors::default()), 
-                collection: Err(TErrors::default())
+                success: false,
+                package: Err(TErrors::default()),
+                collection: Err(TErrors::default()),
             }
         }
     }
 
     impl<T: Serialize + DeserializeOwned + Sized + Clone + Debug> Commit<T> {
-        pub fn determine(&self, package: Result<T, TErrors>, collection: Result<Collection<T>, TErrors>) -> Self {
-            
+        pub fn determine(
+            &self,
+            package: Result<T, TErrors>,
+            collection: Result<Collection<T>, TErrors>,
+        ) -> Self {
             let success: bool = if package.is_err() && collection.is_err() {
                 false
             } else {
-                true 
-            }; 
+                true
+            };
 
             Self {
-                success, 
-                package, 
-                collection
+                success,
+                package,
+                collection,
             }
         }
-    } 
+    }
 
     pub trait Collect<T: Serialize + DeserializeOwned + Sized + Clone + Debug> {
         /// collects all tables across the JSON files that match type of T.
@@ -110,8 +113,8 @@ pub mod elaborate {
         fn set_time_stamp(&self, time_stamp: String) -> Self;
         /// this is experimental. it wont work for HashMap of String and Vec of T
         fn raw_changes(&self) -> Result<(Vec<(String, String)>, Vec<(String, String)>), TErrors>;
-        /// measures success of execution 
-        fn commit(&self) -> Commit<T>; 
+        /// measures success of execution
+        fn commit(&self) -> Commit<T>;
     }
 
     pub trait ToLogCollect<T: Serialize + DeserializeOwned + Sized + Clone + Debug> {
@@ -124,8 +127,8 @@ pub mod elaborate {
         /// makes comparison between before and after (still under development)
         /// This has a lot more to be added
         fn raw_changes_collect(&self) -> Result<(Vec<T>, Vec<T>), TErrors>;
-        /// measures success of execution 
-        fn commit(&self) -> Commit<T>; 
+        /// measures success of execution
+        fn commit(&self) -> Commit<T>;
     }
 
     /// simplifies code in ToHash trait
@@ -653,7 +656,7 @@ pub mod elaborate {
             Commit::default().determine(self.later.clone(), Err(TErrors::None))
         }
     }
-    /// A logger for Collection struct. 
+    /// A logger for Collection struct.
     pub struct CollectLogger<T: Serialize + DeserializeOwned + Sized + Clone + Debug> {
         pub prior: Collection<T>,
         pub later: Result<Collection<T>, TErrors>,
@@ -689,7 +692,8 @@ pub mod elaborate {
 
         fn raw_changes_collect(&self) -> Result<(Vec<T>, Vec<T>), TErrors> {
             let added: Vec<T> = self
-                .later.clone()?
+                .later
+                .clone()?
                 .inner
                 .clone()
                 .into_iter()
