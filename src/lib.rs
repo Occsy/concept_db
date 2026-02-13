@@ -35,9 +35,9 @@ pub mod elaborate {
         None 
     }
     pub struct Commit<T: Serialize + DeserializeOwned + Sized + Clone + Debug>  {
-        success: bool, 
-        package: Result<T, TErrors>, 
-        collection: Result<Collection<T>, TErrors>
+        pub success: bool, 
+        pub package: Result<T, TErrors>, 
+        pub collection: Result<Collection<T>, TErrors>
     }
 
     impl<T: Serialize + DeserializeOwned + Sized + Clone + Debug> Default for Commit<T> {
