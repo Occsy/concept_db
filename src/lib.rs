@@ -9,7 +9,7 @@ pub mod elaborate {
         path::Path,
     };
 
-    #[derive(Debug)]
+    #[derive(Default, Debug, Clone)]
     /// All errors converted into types from this enum
     pub enum TErrors {
         /// file doesnt exist
@@ -28,7 +28,44 @@ pub mod elaborate {
         HashConvert,
         /// error deleting file
         DeleteError,
+        /// error reading collection
+        CollectReadError, 
+        /// not ideal but meant for ease of use with Commit 
+        #[default]
+        None 
     }
+    pub struct Commit<T: Serialize + DeserializeOwned + Sized + Clone + Debug>  {
+        success: bool, 
+        package: Result<T, TErrors>, 
+        collection: Result<Collection<T>, TErrors>
+    }
+
+    impl<T: Serialize + DeserializeOwned + Sized + Clone + Debug> Default for Commit<T> {
+        fn default() -> Self {
+            Self {
+                success: false, 
+                package: Err(TErrors::default()), 
+                collection: Err(TErrors::default())
+            }
+        }
+    }
+
+    impl<T: Serialize + DeserializeOwned + Sized + Clone + Debug> Commit<T> {
+        pub fn determine(&self, package: Result<T, TErrors>, collection: Result<Collection<T>, TErrors>) -> Self {
+            
+            let success: bool = if package.is_err() && collection.is_err() {
+                false
+            } else {
+                true 
+            }; 
+
+            Self {
+                success, 
+                package, 
+                collection
+            }
+        }
+    } 
 
     pub trait Collect<T: Serialize + DeserializeOwned + Sized + Clone + Debug> {
         /// collects all tables across the JSON files that match type of T.
@@ -71,6 +108,8 @@ pub mod elaborate {
         fn set_time_stamp(&self, time_stamp: String) -> Self;
         /// this is experimental. it wont work for HashMap of String and Vec of T
         fn raw_changes(&self) -> Result<(Vec<(String, String)>, Vec<(String, String)>), TErrors>;
+        /// measures success of execution 
+        fn commit(&self) -> Commit<T>; 
     }
 
     pub trait ToLogCollect<T: Serialize + DeserializeOwned + Sized + Clone + Debug> {
@@ -83,6 +122,8 @@ pub mod elaborate {
         /// makes comparison between before and after (still under development)
         /// This has a lot more to be added
         fn raw_changes_collect(&self) -> Result<(Vec<T>, Vec<T>), TErrors>;
+        /// measures success of execution 
+        fn commit(&self) -> Commit<T>; 
     }
 
     /// simplifies code in ToHash trait
@@ -569,7 +610,7 @@ pub mod elaborate {
     /// A simple logger for actions done
     pub struct Logger<T: Serialize + DeserializeOwned + Sized + Clone + Debug> {
         pub prior: T,
-        pub later: T,
+        pub later: Result<T, TErrors>,
         pub time_stamp: String,
     }
 
@@ -585,7 +626,7 @@ pub mod elaborate {
         fn set_later(&self, later: T) -> Self {
             Self {
                 prior: self.prior.clone(),
-                later: later.clone(),
+                later: Ok(later.clone()),
                 time_stamp: self.time_stamp.clone(),
             }
         }
@@ -600,15 +641,20 @@ pub mod elaborate {
 
         fn raw_changes(&self) -> Result<(Vec<(String, String)>, Vec<(String, String)>), TErrors> {
             let prior_frag: Fragment<T> = Fragment::new(self.prior.clone());
-            let later_frag: Fragment<T> = Fragment::new(self.later.clone());
+            let later_frag: Fragment<T> = Fragment::new(self.later.clone()?);
             let left_vec: Vec<(String, String)> = prior_frag.zip()?;
             let right_vec: Vec<(String, String)> = later_frag.zip()?;
             Ok((left_vec, right_vec))
         }
+
+        fn commit(&self) -> Commit<T> {
+            Commit::default().determine(self.later.clone(), Err(TErrors::None))
+        }
     }
+    /// A logger for Collection struct. 
     pub struct CollectLogger<T: Serialize + DeserializeOwned + Sized + Clone + Debug> {
         pub prior: Collection<T>,
-        pub later: Collection<T>,
+        pub later: Result<Collection<T>, TErrors>,
         pub time_stamp: String,
     }
 
@@ -626,7 +672,7 @@ pub mod elaborate {
         fn set_later(&self, later: Collection<T>) -> Self {
             Self {
                 prior: self.prior.clone(),
-                later: later.clone(),
+                later: Ok(later.clone()),
                 time_stamp: self.time_stamp.clone(),
             }
         }
@@ -641,7 +687,7 @@ pub mod elaborate {
 
         fn raw_changes_collect(&self) -> Result<(Vec<T>, Vec<T>), TErrors> {
             let added: Vec<T> = self
-                .later
+                .later.clone()?
                 .inner
                 .clone()
                 .into_iter()
@@ -652,9 +698,13 @@ pub mod elaborate {
                 .inner
                 .clone()
                 .into_iter()
-                .filter(|f| !self.later.inner.contains(f))
+                .filter(|f| !self.later.clone().unwrap().inner.contains(f))
                 .collect();
             Ok((added, removed))
+        }
+
+        fn commit(&self) -> Commit<T> {
+            Commit::default().determine(Err(TErrors::None), self.later.clone())
         }
     }
 }

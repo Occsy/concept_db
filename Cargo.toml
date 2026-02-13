@@ -1,7 +1,8 @@
 [package]
 name = "concept_db"
-version = "0.1.231"
+version = "0.1.233"
 edition = "2024"
+rust-version = "1.85"
 authors = ["Julian Mendez <Jul1anMendez@proton.me>"]
 email = "Jul1anMendez@proton.me"
 repository = "https://docs.rs/concept_db/latest/concept_db/"
