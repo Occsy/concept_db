@@ -34,6 +34,8 @@ pub mod elaborate {
         #[default]
         None 
     }
+
+    /// An output design for the Logger
     pub struct Commit<T: Serialize + DeserializeOwned + Sized + Clone + Debug>  {
         pub success: bool, 
         pub package: Result<T, TErrors>, 
