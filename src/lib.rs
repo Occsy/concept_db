@@ -107,7 +107,7 @@ pub mod elaborate {
     pub trait ToLog<T: Serialize + DeserializeOwned + Sized + Clone + Debug> {
         /// updates initial state
         fn set_prior(&self, prior: T) -> Self;
-        /// intended to set updated state on completion for comparision (to be developed)
+        /// intended to set updated state on completion for comparision
         fn set_later(&self, later: T) -> Self;
         /// sets the time at which change occured.
         fn set_time_stamp(&self, time_stamp: String) -> Self;
@@ -115,20 +115,32 @@ pub mod elaborate {
         fn raw_changes(&self) -> Result<(Vec<(String, String)>, Vec<(String, String)>), TErrors>;
         /// measures success of execution
         fn commit(&self) -> Commit<T>;
+        /// returns true if successful operation
+        fn is_success(&self) -> bool;
+        /// returns true if failed operation
+        fn is_failure(&self) -> bool;
+        /// rollsback to original state on error
+        fn rollback(&self) -> Result<Logger<T>, TErrors>;
     }
 
     pub trait ToLogCollect<T: Serialize + DeserializeOwned + Sized + Clone + Debug> {
         /// updates initial state
         fn set_prior(&self, prior: Collection<T>) -> Self;
-        /// intended to set updated state on completion for comparision (to be developed)
+        /// intended to set updated state on completion for comparision
         fn set_later(&self, later: Collection<T>) -> Self;
         /// sets the time at which change occured.
         fn set_time_stamp(&self, time_stamp: String) -> Self;
         /// makes comparison between before and after (still under development)
-        /// This has a lot more to be added
+        /// This has a lot more to be added.
         fn raw_changes_collect(&self) -> Result<(Vec<T>, Vec<T>), TErrors>;
-        /// measures success of execution
+        /// measures success of execution.
         fn commit(&self) -> Commit<T>;
+        /// successful execution
+        fn is_success(&self) -> bool;
+        ///failed execution
+        fn is_failure(&self) -> bool;
+        /// rollsback to previous state
+        fn rollback(&self) -> Result<CollectLogger<T>, TErrors>;
     }
 
     /// simplifies code in ToHash trait
@@ -652,8 +664,27 @@ pub mod elaborate {
             Ok((left_vec, right_vec))
         }
 
+        fn is_success(&self) -> bool {
+            self.commit().success == true
+        }
+
+        fn is_failure(&self) -> bool {
+            self.commit().success == false
+        }
+
         fn commit(&self) -> Commit<T> {
             Commit::default().determine(self.later.clone(), Err(TErrors::None))
+        }
+
+        fn rollback(&self) -> Result<Logger<T>, TErrors> {
+            if self.is_failure() {
+                self.set_later(self.prior.clone());
+            }
+            Ok(Self {
+                prior: self.prior.clone(),
+                later: self.later.clone(),
+                time_stamp: self.time_stamp.clone(),
+            })
         }
     }
     /// A logger for Collection struct.
@@ -711,6 +742,25 @@ pub mod elaborate {
 
         fn commit(&self) -> Commit<T> {
             Commit::default().determine(Err(TErrors::None), self.later.clone())
+        }
+
+        fn is_success(&self) -> bool {
+            self.commit().success == true
+        }
+
+        fn is_failure(&self) -> bool {
+            self.commit().success == false
+        }
+
+        fn rollback(&self) -> Result<CollectLogger<T>, TErrors> {
+            if self.is_success() {
+                self.set_later(self.prior.clone());
+            }
+            Ok(Self {
+                prior: self.prior.clone(),
+                later: self.later.clone(),
+                time_stamp: self.time_stamp.clone(),
+            })
         }
     }
 }
