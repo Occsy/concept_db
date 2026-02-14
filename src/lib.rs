@@ -318,13 +318,13 @@ pub mod elaborate {
 
             let full_path: &Path = &Path::new(inner_path);
 
-            let atom: AtomicCopy = AtomicCopy::new(table_name, "json".to_string(), src_bytes);
-
-            atom.construct()?.replace()?.check()?.destroy()?;
+            //let atom: AtomicCopy = AtomicCopy::new(table_name, "json".to_string(), src_bytes);
 
             let Ok(mut file) = File::open(full_path) else {
                 return Err(TErrors::FileError);
             };
+
+            //atom.construct()?.replace()?.check()?.destroy()?;
 
             file.write(&mut src_bytes).map_err(|_| {
                 return TErrors::WriteByteError;
