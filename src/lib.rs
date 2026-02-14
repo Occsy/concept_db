@@ -318,17 +318,18 @@ pub mod elaborate {
 
             let full_path: &Path = &Path::new(inner_path);
 
-            //let atom: AtomicCopy = AtomicCopy::new(table_name, "json".to_string(), src_bytes);
+            let atom: AtomicCopy = AtomicCopy::new(table_name, "json".to_string(), src_bytes);
 
-            let Ok(mut file) = File::open(full_path) else {
+            let Ok(mut file) = File::create_new(full_path) else {
                 return Err(TErrors::FileError);
             };
-
-            //atom.construct()?.replace()?.check()?.destroy()?;
 
             file.write(&mut src_bytes).map_err(|_| {
                 return TErrors::WriteByteError;
             })?;
+
+            // still working this part. 
+            atom.construct()?.replace()?.check()?.destroy()?;
 
             Ok(self)
         }
@@ -589,7 +590,7 @@ pub mod elaborate {
             Self {
                 title: self.title.clone(),
                 ext,
-                data: self.data.clone(),
+                data: self.data,
             }
         }
 
