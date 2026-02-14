@@ -30,7 +30,7 @@ pub mod elaborate {
         DeleteError,
         /// error reading collection
         CollectReadError,
-        /// an error made for atomic checker 
+        /// an error made for atomic checker
         CheckError,
         /// not ideal but meant for ease of use with Commit
         #[default]
@@ -313,19 +313,18 @@ pub mod elaborate {
 
             let mut src_bytes = string_convert.as_bytes();
 
-            let inner_path: &String = &format!("{path_root}{}", table_name.clone() + ".json").to_string();
+            let inner_path: &String =
+                &format!("{path_root}{}", table_name.clone() + ".json").to_string();
 
             let full_path: &Path = &Path::new(inner_path);
 
             let atom: AtomicCopy = AtomicCopy::new(table_name, "json".to_string(), src_bytes);
 
-            atom.construct()?.replace()?.check()?.destroy()?; 
+            atom.construct()?.replace()?.check()?.destroy()?;
 
             let Ok(mut file) = File::open(full_path) else {
                 return Err(TErrors::FileError);
             };
-
-            
 
             file.write(&mut src_bytes).map_err(|_| {
                 return TErrors::WriteByteError;
@@ -559,33 +558,29 @@ pub mod elaborate {
 
     #[derive(Clone)]
     pub struct AtomicCopy<'a> {
-        pub title: String, 
-        pub ext: String, 
-        pub data: &'a [u8] 
+        pub title: String,
+        pub ext: String,
+        pub data: &'a [u8],
     }
 
     impl<'a> Default for AtomicCopy<'a> {
-        fn default() -> Self {  
+        fn default() -> Self {
             Self {
-                title: "example".to_string(), 
-                ext: "json".to_string(), 
-                data: "".as_bytes()
+                title: "example".to_string(),
+                ext: "json".to_string(),
+                data: "".as_bytes(),
             }
         }
     }
 
     impl<'a> AtomicCopy<'a> {
         pub fn new(title: String, ext: String, data: &'a [u8]) -> Self {
-            Self {
-                title, 
-                ext, 
-                data
-            }
+            Self { title, ext, data }
         }
 
         pub fn set_title(&self, title: String) -> Self {
             Self {
-                title, 
+                title,
                 ..self.clone()
             }
         }
@@ -593,42 +588,47 @@ pub mod elaborate {
         pub fn set_ext(&self, ext: String) -> Self {
             Self {
                 title: self.title.clone(),
-                ext, 
-                data: self.data.clone()
+                ext,
+                data: self.data.clone(),
             }
         }
 
         pub fn construct(&self) -> Result<Self, TErrors> {
-            let Ok(mut file) =  File::open(format!("{}.{}", self.title, "temp")) else {
-                return Err(TErrors::FileError); 
-            };  
+            let Ok(mut file) = File::open(format!("{}.{}", self.title, "temp")) else {
+                return Err(TErrors::FileError);
+            };
 
             file.write(self.data).map_err(|_| {
-                return TErrors::WriteByteError; 
-            })?; 
+                return TErrors::WriteByteError;
+            })?;
 
             Ok(self.clone())
         }
 
         pub fn replace(&self) -> Result<Self, TErrors> {
-            fs::rename(&format!("./db_files/{}.{}", self.title, "temp"), &format!("./db_files/{}.{}", self.title, self.ext)).map_err(|_| {
-                return TErrors::FileError; 
-            })?; 
+            fs::rename(
+                &format!("./db_files/{}.{}", self.title, "temp"),
+                &format!("./db_files/{}.{}", self.title, self.ext),
+            )
+            .map_err(|_| {
+                return TErrors::FileError;
+            })?;
             Ok(self.clone())
         }
 
         pub fn check(&self) -> Result<Self, TErrors> {
+            let temp_data =
+                fs::read(&format!("./db_files/{}.{}", self.title, "temp")).map_err(|_| {
+                    return TErrors::ReadByteError;
+                })?;
 
-            let temp_data = fs::read(&format!("./db_files/{}.{}", self.title, "temp")).map_err(|_| {
-                return TErrors::ReadByteError; 
-            })?; 
-
-            let current_data = fs::read(&format!("./db_files/{}.{}", self.title, self.ext)).map_err(|_| {
-                return TErrors::ReadByteError; 
-            })?; 
+            let current_data = fs::read(&format!("./db_files/{}.{}", self.title, self.ext))
+                .map_err(|_| {
+                    return TErrors::ReadByteError;
+                })?;
 
             if temp_data != current_data {
-                return Err(TErrors::CheckError); 
+                return Err(TErrors::CheckError);
             }
 
             Ok(self.clone())
@@ -636,9 +636,9 @@ pub mod elaborate {
 
         pub fn destroy(&self) -> Result<(), TErrors> {
             fs::remove_file(&format!("./db_files/{}.{}", self.title, "temp")).map_err(|_| {
-                return TErrors::FileError; 
+                return TErrors::FileError;
             })
-        } 
+        }
     }
 
     #[derive(Default, Clone)]
