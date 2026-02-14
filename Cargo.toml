@@ -1,6 +1,6 @@
 [package]
 name = "concept_db"
-version = "0.1.240"
+version = "0.1.241"
 edition = "2024"
 rust-version = "1.85"
 authors = ["Julian Mendez <Jul1anMendez@proton.me>"]
