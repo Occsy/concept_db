@@ -311,7 +311,7 @@ pub mod elaborate {
 
             let string_convert: String = self.to_string();
 
-            let mut src_bytes = string_convert.as_bytes();
+            let src_bytes = string_convert.as_bytes();
 
             let inner_path: &String =
                 &format!("{path_root}{}", table_name.clone() + ".json").to_string();
@@ -320,16 +320,11 @@ pub mod elaborate {
 
             let atom: AtomicCopy = AtomicCopy::new(table_name, "json".to_string(), src_bytes);
 
-            let Ok(mut file) = File::create_new(full_path) else {
-                return Err(TErrors::FileError);
-            };
-
-            file.write(&mut src_bytes).map_err(|_| {
-                return TErrors::WriteByteError;
+            File::create_new(full_path).map_err(|_| {
+                return TErrors::FileError;
             })?;
 
-            // still working this part. 
-            atom.construct()?.replace()?.check()?.destroy()?;
+            atom.construct()?.replace()?.destroy()?;
 
             Ok(self)
         }
