@@ -553,6 +553,8 @@ pub mod elaborate {
     }
 
     #[derive(Clone)]
+    /// Designed to apply actions to temp file before permanent.
+    /// permanent file then only changed on successful execution.
     pub struct AtomicCopy<'a> {
         pub title: String,
         pub ext: String,
@@ -570,17 +572,18 @@ pub mod elaborate {
     }
 
     impl<'a> AtomicCopy<'a> {
+        /// creates new instance of Atomic Copy
         pub fn new(title: String, ext: String, data: &'a [u8]) -> Self {
             Self { title, ext, data }
         }
-
+        /// sets file title
         pub fn set_title(&self, title: String) -> Self {
             Self {
                 title,
                 ..self.clone()
             }
         }
-
+        /// sets file extension
         pub fn set_ext(&self, ext: String) -> Self {
             Self {
                 title: self.title.clone(),
@@ -588,7 +591,7 @@ pub mod elaborate {
                 data: self.data,
             }
         }
-
+        /// creates file and file contents
         pub fn construct(&self) -> Result<Self, TErrors> {
             let Ok(mut file) = File::open(format!("{}.{}", self.title, "temp")) else {
                 return Err(TErrors::FileError);
@@ -600,7 +603,7 @@ pub mod elaborate {
 
             Ok(self.clone())
         }
-
+        /// replaces temp with permanent file
         pub fn replace(&self) -> Result<Self, TErrors> {
             fs::rename(
                 &format!("./db_files/{}.{}", self.title, "temp"),
@@ -611,7 +614,7 @@ pub mod elaborate {
             })?;
             Ok(self.clone())
         }
-
+        /// checks whether content is same between temp and permanent file
         pub fn check(&self) -> Result<Self, TErrors> {
             let temp_data =
                 fs::read(&format!("./db_files/{}.{}", self.title, "temp")).map_err(|_| {
@@ -629,7 +632,7 @@ pub mod elaborate {
 
             Ok(self.clone())
         }
-
+        /// deletes the temp file
         pub fn destroy(&self) -> Result<(), TErrors> {
             fs::remove_file(&format!("./db_files/{}.{}", self.title, "temp")).map_err(|_| {
                 return TErrors::FileError;
