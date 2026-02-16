@@ -2,7 +2,12 @@ pub mod elaborate {
     use serde::{Deserialize, Serialize, de::DeserializeOwned};
     use serde_json::to_string;
     use std::{
-        collections::HashMap, fmt::Debug, fs::{self, DirEntry, File}, hash::{DefaultHasher, Hash, Hasher}, io::{BufReader, Read, Write}, path::Path
+        collections::HashMap,
+        fmt::Debug,
+        fs::{self, DirEntry, File},
+        hash::{DefaultHasher, Hash, Hasher},
+        io::{BufReader, Read, Write},
+        path::Path,
     };
 
     #[derive(Default, Debug, Clone, Serialize, Deserialize)]
@@ -34,11 +39,11 @@ pub mod elaborate {
     }
 
     pub fn write_hash<T>(item: T) -> u64
-    where 
-        T: Hash 
+    where
+        T: Hash,
     {
-        let mut hasher = DefaultHasher::new(); 
-        item.hash(&mut  hasher); 
+        let mut hasher = DefaultHasher::new();
+        item.hash(&mut hasher);
         hasher.finish()
     }
 
@@ -49,7 +54,9 @@ pub mod elaborate {
         pub collection: Result<Collection<T>, TErrors>,
     }
 
-    impl<T: Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default> Default for Commit<T> {
+    impl<T: Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default> Default
+        for Commit<T>
+    {
         fn default() -> Self {
             Self {
                 success: false,
@@ -81,7 +88,7 @@ pub mod elaborate {
 
     pub trait Collect<T: Serialize + DeserializeOwned + Sized + Clone + Debug> {
         /// creates new instance
-        fn new(inner: Vec<T>) -> Self; 
+        fn new(inner: Vec<T>) -> Self;
         /// collects all tables across the JSON files that match type of T.
         fn collect(&self, frag: Fragment<T>) -> Result<Self, TErrors>
         where
@@ -115,15 +122,17 @@ pub mod elaborate {
 
     pub trait ToLog<T: Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default> {
         /// write ids based on hash of prior and later
-        fn set_hash_ids(&self) -> Result<Self, TErrors> where Self: Sized; 
+        fn set_hash_ids(&self) -> Result<Self, TErrors>
+        where
+            Self: Sized;
         /// compares two hashes from original and altered states
-        fn compare_ids(&self) -> bool; 
+        fn compare_ids(&self) -> bool;
         /// updates initial state
         fn set_prior(&self, prior: T) -> Self;
         /// intended to set updated state on completion for comparision
         fn set_later(&self, later: T) -> Self;
-        /// write changes to logger 
-        fn document(&self) -> Result<(), TErrors>; 
+        /// write changes to logger
+        fn document(&self) -> Result<(), TErrors>;
         /// sets the time at which change occured.
         fn set_time_stamp(&self, time_stamp: String) -> Self;
         /// this is experimental. it wont work for HashMap of String and Vec of T
@@ -138,11 +147,15 @@ pub mod elaborate {
         fn rollback(&self) -> Result<Logger<T>, TErrors>;
     }
 
-    pub trait ToLogCollect<T: Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default> {
+    pub trait ToLogCollect<T: Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default>
+    {
         /// write ids based on hash of prior and later
-        fn set_hash_ids(&self) -> Result<Self, TErrors> where Self: Sized, Collection<T>: Hash; 
+        fn set_hash_ids(&self) -> Result<Self, TErrors>
+        where
+            Self: Sized,
+            Collection<T>: Hash;
         /// compares two hashes from original and altered states
-        fn compare_ids(&self) -> bool; 
+        fn compare_ids(&self) -> bool;
         /// updates initial state
         fn set_prior(&self, prior: Collection<T>) -> Self;
         /// intended to set updated state on completion for comparision
@@ -648,14 +661,13 @@ pub mod elaborate {
         pub inner: Vec<T>,
     }
 
-    impl<T: Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default> Collect<T> for Collection<T> {
-        
+    impl<T: Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default> Collect<T>
+        for Collection<T>
+    {
         fn new(inner: Vec<T>) -> Self {
-            Self {
-                inner
-            }
+            Self { inner }
         }
-        
+
         fn collect(&self, frag: Fragment<T>) -> Result<Self, TErrors>
         where
             Self: Sized,
@@ -727,27 +739,28 @@ pub mod elaborate {
     /// A simple logger for actions done
     #[derive(Serialize, Deserialize, Clone, Debug)]
     pub struct Logger<T: Serialize + Sized + Clone + Debug + Hash> {
-        pub prior_id: u64, 
+        pub prior_id: u64,
         pub later_id: u64,
         pub prior: T,
         pub later: Result<T, TErrors>,
         pub time_stamp: String,
     }
 
-    impl<T: Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default> ToLog<T> for Logger<T> 
-    where 
+    impl<T: Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default> ToLog<T>
+        for Logger<T>
+    where
         Collection<T>: Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default,
-        Logger<T>: Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default, 
-        Collection<Logger<T>>: Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default
+        Logger<T>: Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default,
+        Collection<Logger<T>>:
+            Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default,
     {
-        
         fn set_hash_ids(&self) -> Result<Self, TErrors> {
             Ok(Self {
-                prior_id: write_hash(self.prior.clone()), 
-                later_id: write_hash(self.later.clone()?), 
-                prior: self.prior.clone(), 
-                later: self.later.clone(), 
-                time_stamp: self.time_stamp.clone()
+                prior_id: write_hash(self.prior.clone()),
+                later_id: write_hash(self.later.clone()?),
+                prior: self.prior.clone(),
+                later: self.later.clone(),
+                time_stamp: self.time_stamp.clone(),
             })
         }
 
@@ -756,20 +769,21 @@ pub mod elaborate {
         }
 
         fn document(&self) -> Result<(), TErrors> {
-            let log_file: String = "logs.json".to_string(); 
-            let mut collection: Collection<Logger<T>> = Collection::default(); 
-            let mut current_logs: Fragment<Collection<Logger<T>>> = Fragment::new(collection.clone());
+            let log_file: String = "logs.json".to_string();
+            let mut collection: Collection<Logger<T>> = Collection::default();
+            let mut current_logs: Fragment<Collection<Logger<T>>> =
+                Fragment::new(collection.clone());
             collection.inner = current_logs.read_table(log_file.clone())?.inner.inner;
-            current_logs.inner.inner = collection.inner; 
+            current_logs.inner.inner = collection.inner;
             current_logs.inner.append(self.clone());
-            current_logs.create_table(log_file)?; 
-            Ok(()) 
+            current_logs.create_table(log_file)?;
+            Ok(())
         }
 
         fn set_prior(&self, prior: T) -> Self {
             Self {
-                prior_id: self.prior_id.clone(), 
-                later_id: self.later_id.clone(), 
+                prior_id: self.prior_id.clone(),
+                later_id: self.later_id.clone(),
                 prior: prior.clone(),
                 later: self.later.clone(),
                 time_stamp: self.time_stamp.clone(),
@@ -778,8 +792,8 @@ pub mod elaborate {
 
         fn set_later(&self, later: T) -> Self {
             Self {
-                prior_id: self.prior_id.clone(), 
-                later_id: self.later_id.clone(), 
+                prior_id: self.prior_id.clone(),
+                later_id: self.later_id.clone(),
                 prior: self.prior.clone(),
                 later: Ok(later.clone()),
                 time_stamp: self.time_stamp.clone(),
@@ -788,8 +802,8 @@ pub mod elaborate {
 
         fn set_time_stamp(&self, time_stamp: String) -> Self {
             Self {
-                prior_id: self.prior_id.clone(), 
-                later_id: self.later_id.clone(), 
+                prior_id: self.prior_id.clone(),
+                later_id: self.later_id.clone(),
                 prior: self.prior.clone(),
                 later: self.later.clone(),
                 time_stamp: time_stamp.clone(),
@@ -822,7 +836,7 @@ pub mod elaborate {
             }
             Ok(Self {
                 prior_id: self.prior_id.clone(),
-                later_id: self.later_id.clone(), 
+                later_id: self.later_id.clone(),
                 prior: self.prior.clone(),
                 later: self.later.clone(),
                 time_stamp: self.time_stamp.clone(),
@@ -830,31 +844,31 @@ pub mod elaborate {
         }
     }
     /// A logger for Collection struct.
-    pub struct CollectLogger<T: Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default> {
-        pub prior_id: u64, 
-        pub later_id: u64, 
+    pub struct CollectLogger<
+        T: Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default,
+    > {
+        pub prior_id: u64,
+        pub later_id: u64,
         pub prior: Collection<T>,
         pub later: Result<Collection<T>, TErrors>,
         pub time_stamp: String,
     }
 
-    impl<T: Serialize + DeserializeOwned + Sized + Clone + Debug + PartialEq + Hash + Default> ToLogCollect<T>
-        for CollectLogger<T>
+    impl<T: Serialize + DeserializeOwned + Sized + Clone + Debug + PartialEq + Hash + Default>
+        ToLogCollect<T> for CollectLogger<T>
     {
-        fn set_hash_ids(&self) -> Result<Self, TErrors> 
-        where 
+        fn set_hash_ids(&self) -> Result<Self, TErrors>
+        where
             Self: Sized,
-            Collection<T>: Hash
+            Collection<T>: Hash,
         {
-            Ok(
-               Self { 
-                prior_id: write_hash(self.prior.clone()), 
-                later_id: write_hash(self.later.clone()?), 
-                prior: self.prior.clone(), 
-                later: self.later.clone(), 
-                time_stamp: self.time_stamp.clone() 
-            }
-            )
+            Ok(Self {
+                prior_id: write_hash(self.prior.clone()),
+                later_id: write_hash(self.later.clone()?),
+                prior: self.prior.clone(),
+                later: self.later.clone(),
+                time_stamp: self.time_stamp.clone(),
+            })
         }
 
         fn compare_ids(&self) -> bool {
@@ -863,7 +877,7 @@ pub mod elaborate {
 
         fn set_prior(&self, prior: Collection<T>) -> Self {
             Self {
-                prior_id: self.prior_id.clone(), 
+                prior_id: self.prior_id.clone(),
                 later_id: self.later_id.clone(),
                 prior: prior.clone(),
                 later: self.later.clone(),
@@ -873,7 +887,7 @@ pub mod elaborate {
 
         fn set_later(&self, later: Collection<T>) -> Self {
             Self {
-                prior_id: self.prior_id.clone(), 
+                prior_id: self.prior_id.clone(),
                 later_id: self.later_id.clone(),
                 prior: self.prior.clone(),
                 later: Ok(later.clone()),
@@ -883,7 +897,7 @@ pub mod elaborate {
 
         fn set_time_stamp(&self, time_stamp: String) -> Self {
             Self {
-                prior_id: self.prior_id.clone(), 
+                prior_id: self.prior_id.clone(),
                 later_id: self.later_id.clone(),
                 prior: self.prior.clone(),
                 later: self.later.clone(),
@@ -927,7 +941,7 @@ pub mod elaborate {
                 self.set_later(self.prior.clone());
             }
             Ok(Self {
-                prior_id: self.prior_id.clone(), 
+                prior_id: self.prior_id.clone(),
                 later_id: self.later_id.clone(),
                 prior: self.prior.clone(),
                 later: self.later.clone(),
