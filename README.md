@@ -74,4 +74,5 @@ I would love any recommendations and help if able.
     - switching from JSON to .bin in next large update
     - Logger improvements (added in version: 0.1.230) 
     - Collection improvements
-    - Functions will only alter tables corresponding to T. 
+    - Functions will only alter tables corresponding to T.
+    - writer improvements based what learned from error fixed on version: 0.1.245  
