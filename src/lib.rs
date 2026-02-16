@@ -138,11 +138,11 @@ pub mod elaborate {
         /// this is experimental. it wont work for HashMap of String and Vec of T
         fn raw_changes(&self) -> Result<(Vec<(String, String)>, Vec<(String, String)>), TErrors>;
         /// measures success of execution
-        fn commit(&self) -> Commit<T>;
+        fn commit(&self) -> Result<Commit<T>, TErrors>;
         /// returns true if successful operation
-        fn is_success(&self) -> bool;
+        fn is_success(&self) -> Result<bool, TErrors>;
         /// returns true if failed operation
-        fn is_failure(&self) -> bool;
+        fn is_failure(&self) -> Result<bool, TErrors>;
         /// rollsback to original state on error
         fn rollback(&self) -> Result<Logger<T>, TErrors>;
     }
@@ -160,6 +160,8 @@ pub mod elaborate {
         fn set_prior(&self, prior: Collection<T>) -> Self;
         /// intended to set updated state on completion for comparision
         fn set_later(&self, later: Collection<T>) -> Self;
+        /// write changes to logger
+        fn document(&self) -> Result<(), TErrors>;
         /// sets the time at which change occured.
         fn set_time_stamp(&self, time_stamp: String) -> Self;
         /// makes comparison between before and after (still under development)
@@ -295,6 +297,7 @@ pub mod elaborate {
             }
 
             let Ok(f) = File::open(convert_path) else {
+                println!("Failed to read file under 'read_table'");  
                 return Err(TErrors::FileError);
             };
 
@@ -314,30 +317,18 @@ pub mod elaborate {
         pub fn create_table(&self, table_name: String) -> Result<&Self, TErrors> {
             let path_root: &String = &String::from("./db_files/");
 
-            if !Path::new(path_root).is_dir() {
+            if !Path::new(path_root).exists() {
                 std::fs::create_dir(path_root).map_err(|_| {
+                    println!("Error creating the directory: './db_files/'"); 
                     return TErrors::DirError;
                 })?;
-            }
-
-            if Path::new(&format!("{}{}.json", path_root, table_name)).is_file() {
-                return Ok(self);
             }
 
             let string_convert: String = self.to_string();
 
             let src_bytes = string_convert.as_bytes();
 
-            let inner_path: &String =
-                &format!("{path_root}{}", table_name.clone() + ".json").to_string();
-
-            let full_path: &Path = &Path::new(inner_path);
-
             let atom: AtomicCopy = AtomicCopy::new(table_name, "json".to_string(), src_bytes);
-
-            File::create_new(full_path).map_err(|_| {
-                return TErrors::FileError;
-            })?;
 
             atom.construct()?.replace()?.destroy()?;
 
@@ -608,13 +599,19 @@ pub mod elaborate {
         }
         /// creates file and file contents
         pub fn construct(&self) -> Result<Self, TErrors> {
-            let Ok(mut file) = File::open(format!("{}.{}", self.title, "temp")) else {
+
+            let Ok(mut file) = File::create(format!("./db_files/{}.{}", self.title, "temp")) else {
+                println!("failed to create file under 'construct'"); 
                 return Err(TErrors::FileError);
             };
 
-            file.write(self.data).map_err(|_| {
+            file.write_all(self.data).map_err(|_| {
                 return TErrors::WriteByteError;
             })?;
+
+            file.sync_all().map_err(|_| {
+                return TErrors::WriteByteError;
+            })?; 
 
             Ok(self.clone())
         }
@@ -623,8 +620,8 @@ pub mod elaborate {
             fs::rename(
                 &format!("./db_files/{}.{}", self.title, "temp"),
                 &format!("./db_files/{}.{}", self.title, self.ext),
-            )
-            .map_err(|_| {
+            ).map_err(|_| {
+                println!("Failed to rename file"); 
                 return TErrors::FileError;
             })?;
             Ok(self.clone())
@@ -649,7 +646,13 @@ pub mod elaborate {
         }
         /// deletes the temp file
         pub fn destroy(&self) -> Result<(), TErrors> {
+            let temp_path: String = format!("./db_files/{}.{}", self.title, "temp"); 
+            let file_path: &Path = Path::new(&temp_path); 
+            if !file_path.exists() {
+                return Ok(()); 
+            }
             fs::remove_file(&format!("./db_files/{}.{}", self.title, "temp")).map_err(|_| {
+                println!("Failed to delete temp file."); 
                 return TErrors::FileError;
             })
         }
@@ -729,6 +732,7 @@ pub mod elaborate {
             let frag: Fragment<Self> = Fragment::new(self.clone());
 
             frag.create_table(title).map_err(|_| {
+                println!("Failed to write to file under 'write_to_file'"); 
                 return TErrors::FileError;
             })?;
 
@@ -818,22 +822,26 @@ pub mod elaborate {
             Ok((left_vec, right_vec))
         }
 
-        fn is_success(&self) -> bool {
-            self.commit().success == true
+        fn is_success(&self) -> Result<bool, TErrors> {
+            Ok(self.commit()?.success == true)
         }
 
-        fn is_failure(&self) -> bool {
-            self.commit().success == false
+        fn is_failure(&self) -> Result<bool, TErrors> {
+            Ok(self.commit()?.success == false)
         }
 
-        fn commit(&self) -> Commit<T> {
-            Commit::default().determine(self.later.clone(), Err(TErrors::None))
+        fn commit(&self) -> Result<Commit<T>, TErrors> {
+            self.set_hash_ids()?; 
+            Ok(Commit::default().determine(self.later.clone(), Err(TErrors::None)))
         }
 
         fn rollback(&self) -> Result<Logger<T>, TErrors> {
-            if self.is_failure() {
-                self.set_later(self.prior.clone());
+            if self.is_failure()? {
+                self.set_later(self.prior.clone()); 
             }
+
+            self.set_hash_ids()?;  
+
             Ok(Self {
                 prior_id: self.prior_id.clone(),
                 later_id: self.later_id.clone(),
@@ -855,7 +863,11 @@ pub mod elaborate {
     }
 
     impl<T: Serialize + DeserializeOwned + Sized + Clone + Debug + PartialEq + Hash + Default>
-        ToLogCollect<T> for CollectLogger<T>
+        ToLogCollect<T> for CollectLogger<T> where 
+                Collection<T>: Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default,
+        CollectLogger<T>: Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default,
+        Collection<CollectLogger<T>>:
+            Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default,
     {
         fn set_hash_ids(&self) -> Result<Self, TErrors>
         where
@@ -869,6 +881,18 @@ pub mod elaborate {
                 later: self.later.clone(),
                 time_stamp: self.time_stamp.clone(),
             })
+        }
+
+        fn document(&self) -> Result<(), TErrors> {
+            let log_file: String = "logs.json".to_string();
+            let mut collection: Collection<CollectLogger<T>> = Collection::default();
+            let mut current_logs: Fragment<Collection<CollectLogger<T>>> =
+                Fragment::new(collection.clone());
+            collection.inner = current_logs.read_table(log_file.clone())?.inner.inner;
+            current_logs.inner.inner = collection.inner;
+            current_logs.inner.append(self.clone());
+            current_logs.create_table(log_file)?;
+            Ok(())
         }
 
         fn compare_ids(&self) -> bool {
@@ -937,7 +961,7 @@ pub mod elaborate {
         }
 
         fn rollback(&self) -> Result<CollectLogger<T>, TErrors> {
-            if self.is_success() {
+            if self.is_failure() {
                 self.set_later(self.prior.clone());
             }
             Ok(Self {
