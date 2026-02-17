@@ -1,6 +1,7 @@
 pub mod elaborate {
     use serde::{Deserialize, Serialize, de::DeserializeOwned};
     use serde_json::to_string;
+    use core::time;
     use std::{
         collections::HashMap,
         fmt::Debug,
@@ -147,6 +148,35 @@ pub mod elaborate {
         fn rollback(&self) -> Result<Logger<T>, TErrors>;
     }
 
+    pub trait ToLogAtomic<T: Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default> {
+        /// create new Atomic Logger instance 
+        fn new(prior: T, later: AtomicCopy, time_stamp: String) -> Self; 
+        /// write ids based on hash of prior and later
+        fn set_hash_ids(&self) -> Result<Self, TErrors>
+        where
+            Self: Sized;
+        /// compares two hashes from original and altered states
+        fn compare_ids(&self) -> bool;
+        /// updates initial state
+        fn set_prior(&self, prior: T) -> Self;
+        /// intended to set updated state on completion for comparision
+        fn set_later(&self, later: AtomicCopy) -> Self;
+        /// write changes to logger
+        fn document(&self) -> Result<(), TErrors>;
+        /// sets the time at which change occured.
+        fn set_time_stamp(&self, time_stamp: String) -> Self;
+        /// this is experimental. it wont work for HashMap of String and Vec of T
+        fn raw_changes(&self) -> Result<(Vec<(String, String)>, Vec<(String, String)>), TErrors>;
+        /// measures success of execution
+        fn commit(&self) -> Result<Commit<AtomicCopy>, TErrors>;
+        /// returns true if successful operation
+        fn is_success(&self) -> Result<bool, TErrors>;
+        /// returns true if failed operation
+        fn is_failure(&self) -> Result<bool, TErrors>;
+        /// rollsback to original state on error
+        fn rollback(&self) -> Result<AtomicLogger<T>, TErrors>;
+    }
+
     pub trait ToLogCollect<T: Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default>
     {
         /// write ids based on hash of prior and later
@@ -277,7 +307,9 @@ pub mod elaborate {
         }
     }
 
-    impl<T: Serialize + DeserializeOwned + Sized + Clone + Debug> Fragment<T> {
+    impl<T: Serialize + DeserializeOwned + Sized + Clone + Debug> Fragment<T> 
+    where 
+    {
         /// initializes the Fragment<T>
         pub fn new(inner: T) -> Self
         where
@@ -297,7 +329,7 @@ pub mod elaborate {
             }
 
             let Ok(f) = File::open(convert_path) else {
-                println!("Failed to read file under 'read_table'");  
+                println!("Failed to read file under 'read_table'");
                 return Err(TErrors::FileError);
             };
 
@@ -319,7 +351,7 @@ pub mod elaborate {
 
             if !Path::new(path_root).exists() {
                 std::fs::create_dir(path_root).map_err(|_| {
-                    println!("Error creating the directory: './db_files/'"); 
+                    println!("Error creating the directory: './db_files/'");
                     return TErrors::DirError;
                 })?;
             }
@@ -329,6 +361,8 @@ pub mod elaborate {
             let src_bytes = string_convert.as_bytes();
 
             let atom: AtomicCopy = AtomicCopy::new(table_name, "json".to_string(), src_bytes);
+
+            let logger = AtomicLogger::new();
 
             atom.construct()?.replace()?.destroy()?;
 
@@ -558,28 +592,28 @@ pub mod elaborate {
         }
     }
 
-    #[derive(Clone)]
+    #[derive(Serialize, Deserialize,Clone, Debug, Hash)]
     /// Designed to apply actions to temp file before permanent.
     /// permanent file then only changed on successful execution.
-    pub struct AtomicCopy<'a> {
+    pub struct AtomicCopy {
         pub title: String,
         pub ext: String,
-        pub data: &'a [u8],
+        pub data: String,
     }
 
-    impl<'a> Default for AtomicCopy<'a> {
+    impl Default for AtomicCopy {
         fn default() -> Self {
             Self {
                 title: "example".to_string(),
                 ext: "json".to_string(),
-                data: "".as_bytes(),
+                data: String::new(),
             }
         }
     }
 
-    impl<'a> AtomicCopy<'a> {
+    impl AtomicCopy {
         /// creates new instance of Atomic Copy
-        pub fn new(title: String, ext: String, data: &'a [u8]) -> Self {
+        pub fn new(title: String, ext: String, data: String) -> Self {
             Self { title, ext, data }
         }
         /// sets file title
@@ -594,24 +628,23 @@ pub mod elaborate {
             Self {
                 title: self.title.clone(),
                 ext,
-                data: self.data,
+                data: self.data.clone(),
             }
         }
         /// creates file and file contents
         pub fn construct(&self) -> Result<Self, TErrors> {
-
             let Ok(mut file) = File::create(format!("./db_files/{}.{}", self.title, "temp")) else {
-                println!("failed to create file under 'construct'"); 
+                println!("failed to create file under 'construct'");
                 return Err(TErrors::FileError);
             };
 
-            file.write_all(self.data).map_err(|_| {
+            file.write_all(self.data.as_bytes()).map_err(|_| {
                 return TErrors::WriteByteError;
             })?;
 
             file.sync_all().map_err(|_| {
                 return TErrors::WriteByteError;
-            })?; 
+            })?;
 
             Ok(self.clone())
         }
@@ -620,8 +653,9 @@ pub mod elaborate {
             fs::rename(
                 &format!("./db_files/{}.{}", self.title, "temp"),
                 &format!("./db_files/{}.{}", self.title, self.ext),
-            ).map_err(|_| {
-                println!("Failed to rename file"); 
+            )
+            .map_err(|_| {
+                println!("Failed to rename file");
                 return TErrors::FileError;
             })?;
             Ok(self.clone())
@@ -646,13 +680,13 @@ pub mod elaborate {
         }
         /// deletes the temp file
         pub fn destroy(&self) -> Result<(), TErrors> {
-            let temp_path: String = format!("./db_files/{}.{}", self.title, "temp"); 
-            let file_path: &Path = Path::new(&temp_path); 
+            let temp_path: String = format!("./db_files/{}.{}", self.title, "temp");
+            let file_path: &Path = Path::new(&temp_path);
             if !file_path.exists() {
-                return Ok(()); 
+                return Ok(());
             }
             fs::remove_file(&format!("./db_files/{}.{}", self.title, "temp")).map_err(|_| {
-                println!("Failed to delete temp file."); 
+                println!("Failed to delete temp file.");
                 return TErrors::FileError;
             })
         }
@@ -732,7 +766,7 @@ pub mod elaborate {
             let frag: Fragment<Self> = Fragment::new(self.clone());
 
             frag.create_table(title).map_err(|_| {
-                println!("Failed to write to file under 'write_to_file'"); 
+                println!("Failed to write to file under 'write_to_file'");
                 return TErrors::FileError;
             })?;
 
@@ -741,6 +775,124 @@ pub mod elaborate {
     }
 
     /// A simple logger for actions done
+    #[derive(Serialize, Clone, Debug)]
+    pub struct AtomicLogger<T: Serialize + Sized + Clone + Debug + Hash> {
+        pub prior_id: u64,
+        pub later_id: u64,
+        pub prior: T,
+        pub later: Result<AtomicCopy, TErrors>,
+        pub time_stamp: String,
+    }
+
+    impl<T: Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default + From<AtomicCopy>> ToLogAtomic<T>
+        for AtomicLogger<T>
+    where
+        Collection<T>: Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default,
+        AtomicLogger<T>: Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default,
+        Collection<AtomicLogger<T>>:
+            Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default,
+    {
+        fn new(prior: T, later: AtomicCopy, time_stamp: String) -> Self {
+            Self {
+                prior_id: write_hash(prior.clone()), 
+                later_id: write_hash(later.clone()), 
+                prior,
+                later: Ok(later), 
+                time_stamp
+            }
+        }
+
+        fn set_hash_ids(&self) -> Result<Self, TErrors> {
+            Ok(Self {
+                prior_id: write_hash(self.prior.clone()),
+                later_id: write_hash(self.later.clone()?),
+                prior: self.prior.clone(),
+                later: self.later.clone(),
+                time_stamp: self.time_stamp.clone(),
+            })
+        }
+
+        fn compare_ids(&self) -> bool {
+            self.prior_id == self.later_id
+        }
+
+        fn document(&self) -> Result<(), TErrors> {
+            let log_file: String = "logs.json".to_string();
+            let mut collection: Collection<AtomicLogger<T>> = Collection::default();
+            let mut current_logs: Fragment<Collection<AtomicLogger<T>>> =
+                Fragment::new(collection.clone());
+            collection.inner = current_logs.read_table(log_file.clone())?.inner.inner;
+            current_logs.inner.inner = collection.inner;
+            current_logs.inner.append(self.clone());
+            current_logs.create_table(log_file)?;
+            Ok(())
+        }
+
+        fn set_prior(&self, prior: T) -> Self {
+            Self {
+                prior_id: self.prior_id.clone(),
+                later_id: self.later_id.clone(),
+                prior: prior.clone(),
+                later: self.later.clone(),
+                time_stamp: self.time_stamp.clone(),
+            }
+        }
+
+        fn set_later(&self, later: AtomicCopy) -> Self {
+            Self {
+                prior_id: self.prior_id.clone(),
+                later_id: self.later_id.clone(),
+                prior: self.prior.clone(),
+                later: Ok(later.clone()),
+                time_stamp: self.time_stamp.clone(),
+            }
+        }
+
+        fn set_time_stamp(&self, time_stamp: String) -> Self {
+            Self {
+                prior_id: self.prior_id.clone(),
+                later_id: self.later_id.clone(),
+                prior: self.prior.clone(),
+                later: self.later.clone(),
+                time_stamp: time_stamp.clone(),
+            }
+        }
+
+        fn raw_changes(&self) -> Result<(Vec<(String, String)>, Vec<(String, String)>), TErrors> {
+            let prior_frag: Fragment<T> = Fragment::new(self.prior.clone());
+            let later_frag: Fragment<T> = Fragment::new(self.later.clone()?.into());
+            let left_vec: Vec<(String, String)> = prior_frag.zip()?;
+            let right_vec: Vec<(String, String)> = later_frag.zip()?;
+            Ok((left_vec, right_vec))
+        }
+
+        fn is_success(&self) -> Result<bool, TErrors> {
+            Ok(self.commit()?.success == true)
+        }
+
+        fn is_failure(&self) -> Result<bool, TErrors> {
+            Ok(self.commit()?.success == false)
+        }
+
+        fn commit(&self) -> Result<Commit<AtomicCopy>, TErrors> {
+            self.set_hash_ids()?;
+            Ok(Commit::default().determine(self.later.clone(), Err(TErrors::None)))
+        }
+
+        fn rollback(&self) -> Result<AtomicLogger<T>, TErrors> {
+
+            self.set_hash_ids()?;
+
+            Ok(Self {
+                prior_id: self.prior_id.clone(),
+                later_id: self.later_id.clone(),
+                prior: self.prior.clone(),
+                later: self.later.clone(),
+                time_stamp: self.time_stamp.clone(),
+            })
+        }
+    }
+
     #[derive(Serialize, Deserialize, Clone, Debug)]
     pub struct Logger<T: Serialize + Sized + Clone + Debug + Hash> {
         pub prior_id: u64,
@@ -749,7 +901,6 @@ pub mod elaborate {
         pub later: Result<T, TErrors>,
         pub time_stamp: String,
     }
-
     impl<T: Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default> ToLog<T>
         for Logger<T>
     where
@@ -831,16 +982,16 @@ pub mod elaborate {
         }
 
         fn commit(&self) -> Result<Commit<T>, TErrors> {
-            self.set_hash_ids()?; 
+            self.set_hash_ids()?;
             Ok(Commit::default().determine(self.later.clone(), Err(TErrors::None)))
         }
 
         fn rollback(&self) -> Result<Logger<T>, TErrors> {
             if self.is_failure()? {
-                self.set_later(self.prior.clone()); 
+                self.set_later(self.prior.clone());
             }
 
-            self.set_hash_ids()?;  
+            self.set_hash_ids()?;
 
             Ok(Self {
                 prior_id: self.prior_id.clone(),
@@ -863,8 +1014,9 @@ pub mod elaborate {
     }
 
     impl<T: Serialize + DeserializeOwned + Sized + Clone + Debug + PartialEq + Hash + Default>
-        ToLogCollect<T> for CollectLogger<T> where 
-                Collection<T>: Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default,
+        ToLogCollect<T> for CollectLogger<T>
+    where
+        Collection<T>: Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default,
         CollectLogger<T>: Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default,
         Collection<CollectLogger<T>>:
             Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default,
@@ -964,6 +1116,9 @@ pub mod elaborate {
             if self.is_failure() {
                 self.set_later(self.prior.clone());
             }
+
+            self.set_hash_ids()?; 
+
             Ok(Self {
                 prior_id: self.prior_id.clone(),
                 later_id: self.later_id.clone(),
