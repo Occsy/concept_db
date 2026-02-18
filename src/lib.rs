@@ -360,9 +360,7 @@ pub mod elaborate {
 
             let src_bytes = string_convert.as_bytes();
 
-            let atom: AtomicCopy = AtomicCopy::new(table_name, "json".to_string(), src_bytes);
-
-            let logger = AtomicLogger::new();
+            let atom: AtomicCopy = AtomicCopy::new(table_name, "json".to_string(), string_convert);
 
             atom.construct()?.replace()?.destroy()?;
 
