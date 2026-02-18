@@ -1,10 +1,9 @@
 pub mod elaborate {
     use serde::{Deserialize, Serialize, de::DeserializeOwned};
     use serde_json::to_string;
-    use core::time;
     use std::{
         collections::HashMap,
-        fmt::Debug,
+        fmt::{Debug, Display},
         fs::{self, DirEntry, File},
         hash::{DefaultHasher, Hash, Hasher},
         io::{BufReader, Read, Write},
@@ -246,7 +245,12 @@ pub mod elaborate {
         pub inner: T,
     }
 
-    impl<T: Serialize + DeserializeOwned + Sized + Clone + Debug> ToString for Fragment<T> {
+    impl<T: Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + From<AtomicCopy> + Default> ToString for Fragment<T> 
+    where 
+        AtomicLogger<T>: Default + DeserializeOwned + Hash,
+        Collection<AtomicLogger<T>>: Clone + Debug + Default + DeserializeOwned + Hash + Serialize,
+        T: From<AtomicCopy> + Default, 
+    {
         /// converts T to String
         fn to_string(&self) -> String {
             let Ok(output) = to_string(&self.inner) else {
@@ -257,7 +261,10 @@ pub mod elaborate {
         }
     }
 
-    impl<T: Serialize + DeserializeOwned + Sized + Clone + Debug> ToHash for Fragment<T> {
+    impl<T: Serialize + DeserializeOwned + Sized + Clone + Debug> ToHash for Fragment<T> 
+    where 
+        Fragment<T>: Display + ToString
+    {
         /// converts T to HashMap<String, String>
         fn to_hash(&self) -> Result<HashMap<String, String>, TErrors>
         where
@@ -307,8 +314,12 @@ pub mod elaborate {
         }
     }
 
-    impl<T: Serialize + DeserializeOwned + Sized + Clone + Debug> Fragment<T> 
+    impl<T: Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default + From<AtomicCopy>> Fragment<T> 
     where 
+        Fragment<T>: Display + ToString,
+        AtomicLogger<T>: Default + DeserializeOwned + Hash, 
+        Collection<AtomicLogger<T>>: Clone + Debug + Default + DeserializeOwned + Hash + Serialize + From<Vec<u8>>, 
+        Collection<T>: Clone + Debug + Default + DeserializeOwned + Hash + Serialize
     {
         /// initializes the Fragment<T>
         pub fn new(inner: T) -> Self
@@ -358,11 +369,20 @@ pub mod elaborate {
 
             let string_convert: String = self.to_string();
 
-            let src_bytes = string_convert.as_bytes();
+            let atom: AtomicCopy = AtomicCopy::new(table_name.clone(), "json".to_string(), string_convert);
 
-            let atom: AtomicCopy = AtomicCopy::new(table_name, "json".to_string(), string_convert);
+            let prior = self.read_table(format!("{}{}.{}", path_root, table_name, "json"))?.inner;
 
-            atom.construct()?.replace()?.destroy()?;
+
+            let atomic_logger = AtomicLogger {
+                prior_id: write_hash(prior.clone()),
+                later_id: write_hash(atom.clone()),
+                prior, 
+                later: atom.construct()?.replace(), 
+                time_stamp: "12:00".to_string()
+            }; 
+
+            atomic_logger.document()?; 
 
             Ok(self)
         }
@@ -696,8 +716,13 @@ pub mod elaborate {
         pub inner: Vec<T>,
     }
 
-    impl<T: Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default> Collect<T>
+    impl<T: Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default + From<AtomicCopy>> Collect<T>
         for Collection<T>
+    where 
+        AtomicLogger<T>: Hash + Default + Debug + DeserializeOwned,
+        Collection<AtomicLogger<T>>: Debug + Hash + Serialize + DeserializeOwned + From<Vec<u8>>,
+        Collection<T>: Serialize + DeserializeOwned + Debug + Hash,
+        Fragment<T>: Display + ToString
     {
         fn new(inner: Vec<T>) -> Self {
             Self { inner }
@@ -761,12 +786,23 @@ pub mod elaborate {
         where
             Self: Serialize + DeserializeOwned + Clone + Debug,
         {
-            let frag: Fragment<Self> = Fragment::new(self.clone());
+            let base_path: String = "./db_files/".to_string(); 
+            let path_string: String = format!("{}{}.json", base_path, title);  
+            let wrapped_string: &Path = Path::new(&path_string); 
 
-            frag.create_table(title).map_err(|_| {
-                println!("Failed to write to file under 'write_to_file'");
-                return TErrors::FileError;
-            })?;
+            let mut file: File = if wrapped_string.exists() {
+                File::open(path_string).map_err(|_|{
+                    return TErrors::FileError; 
+                })?
+            } else {
+                File::create(path_string).map_err(|_|{
+                    return TErrors::FileError; 
+                })?
+            };
+
+            file.write_all(format!("{:?}", self.clone()).as_bytes()).unwrap();
+
+            file.sync_all().unwrap(); 
 
             Ok(())
         }
@@ -785,10 +821,11 @@ pub mod elaborate {
     impl<T: Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default + From<AtomicCopy>> ToLogAtomic<T>
         for AtomicLogger<T>
     where
+        Fragment<T>: Display + ToString,
         Collection<T>: Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default,
         AtomicLogger<T>: Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default,
         Collection<AtomicLogger<T>>:
-            Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default,
+            Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default + From<Vec<u8>>,
     {
         fn new(prior: T, later: AtomicCopy, time_stamp: String) -> Self {
             Self {
@@ -815,14 +852,23 @@ pub mod elaborate {
         }
 
         fn document(&self) -> Result<(), TErrors> {
-            let log_file: String = "logs.json".to_string();
-            let mut collection: Collection<AtomicLogger<T>> = Collection::default();
-            let mut current_logs: Fragment<Collection<AtomicLogger<T>>> =
-                Fragment::new(collection.clone());
-            collection.inner = current_logs.read_table(log_file.clone())?.inner.inner;
-            current_logs.inner.inner = collection.inner;
-            current_logs.inner.append(self.clone());
-            current_logs.create_table(log_file)?;
+            let log_file: String = "./db_files/logs.json".to_string();
+            let wrapped_file: &Path = Path::new(&log_file); 
+            let mut buf: Vec<u8> = Vec::new(); 
+            let mut file: File = if wrapped_file.exists() {
+                File::open(log_file.clone()).map_err(|_|{
+                    return TErrors::FileError; 
+                })?
+            } else {
+                File::create(log_file.clone()).map_err(|_|{
+                    return TErrors::FileError; 
+                })?
+            }; 
+            file.read_to_end(&mut buf).unwrap();             
+            let mut current_logs: Collection<AtomicLogger<T>> = buf.into(); 
+            current_logs.inner.append(&mut vec![self.clone()]);
+            file.write_all(format!("{:?}", current_logs).as_bytes()).unwrap();
+            file.sync_all().unwrap(); 
             Ok(())
         }
 
@@ -899,13 +945,19 @@ pub mod elaborate {
         pub later: Result<T, TErrors>,
         pub time_stamp: String,
     }
-    impl<T: Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default> ToLog<T>
+    impl<T: Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default + From<AtomicCopy>> ToLog<T>
         for Logger<T>
     where
+        Fragment<T>: Display + ToString,
         Collection<T>: Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default,
         Logger<T>: Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default,
         Collection<Logger<T>>:
-            Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default,
+            Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default + From<Vec<u8>>,
+        AtomicLogger<T>: 
+            Default + Hash + Debug + DeserializeOwned, 
+        Collection<AtomicLogger<T>>:
+            Debug + From<Vec<u8>> + Hash + Serialize + DeserializeOwned
+
     {
         fn set_hash_ids(&self) -> Result<Self, TErrors> {
             Ok(Self {
@@ -922,14 +974,23 @@ pub mod elaborate {
         }
 
         fn document(&self) -> Result<(), TErrors> {
-            let log_file: String = "logs.json".to_string();
-            let mut collection: Collection<Logger<T>> = Collection::default();
-            let mut current_logs: Fragment<Collection<Logger<T>>> =
-                Fragment::new(collection.clone());
-            collection.inner = current_logs.read_table(log_file.clone())?.inner.inner;
-            current_logs.inner.inner = collection.inner;
-            current_logs.inner.append(self.clone());
-            current_logs.create_table(log_file)?;
+            let log_file: String = "./db_files/logs.json".to_string();
+            let wrapped_file: &Path = Path::new(&log_file); 
+            let mut buf: Vec<u8> = Vec::new(); 
+            let mut file: File = if wrapped_file.exists() {
+                File::open(log_file.clone()).map_err(|_|{
+                    return TErrors::FileError; 
+                })?
+            } else {
+                File::create(log_file.clone()).map_err(|_|{
+                    return TErrors::FileError; 
+                })?
+            }; 
+            file.read_to_end(&mut buf).unwrap();             
+            let mut current_logs: Collection<Logger<T>> = buf.into(); 
+            current_logs.inner.append(&mut vec![self.clone()]);
+            file.write_all(format!("{:?}", current_logs).as_bytes()).unwrap();
+            file.sync_all().unwrap(); 
             Ok(())
         }
 
@@ -1017,7 +1078,7 @@ pub mod elaborate {
         Collection<T>: Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default,
         CollectLogger<T>: Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default,
         Collection<CollectLogger<T>>:
-            Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default,
+            Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default + From<Vec<u8>>,
     {
         fn set_hash_ids(&self) -> Result<Self, TErrors>
         where
@@ -1034,14 +1095,23 @@ pub mod elaborate {
         }
 
         fn document(&self) -> Result<(), TErrors> {
-            let log_file: String = "logs.json".to_string();
-            let mut collection: Collection<CollectLogger<T>> = Collection::default();
-            let mut current_logs: Fragment<Collection<CollectLogger<T>>> =
-                Fragment::new(collection.clone());
-            collection.inner = current_logs.read_table(log_file.clone())?.inner.inner;
-            current_logs.inner.inner = collection.inner;
-            current_logs.inner.append(self.clone());
-            current_logs.create_table(log_file)?;
+            let log_file: String = "./db_files/logs.json".to_string();
+            let wrapped_file: &Path = Path::new(&log_file); 
+            let mut buf: Vec<u8> = Vec::new(); 
+            let mut file: File = if wrapped_file.exists() {
+                File::open(log_file.clone()).map_err(|_|{
+                    return TErrors::FileError; 
+                })?
+            } else {
+                File::create(log_file.clone()).map_err(|_|{
+                    return TErrors::FileError; 
+                })?
+            }; 
+            file.read_to_end(&mut buf).unwrap();             
+            let mut current_logs: Collection<CollectLogger<T>> = buf.into(); 
+            current_logs.inner.append(&mut vec![self.clone()]);
+            file.write_all(format!("{:?}", current_logs).as_bytes()).unwrap();
+            file.sync_all().unwrap(); 
             Ok(())
         }
 
