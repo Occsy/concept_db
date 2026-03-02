@@ -120,33 +120,6 @@ pub mod elaborate {
         fn zip(&self) -> Result<Vec<(String, String)>, TErrors>;
     }
 
-    pub trait ToLog<T: Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default> {
-        /// write ids based on hash of prior and later
-        fn set_hash_ids(&self) -> Result<Self, TErrors>
-        where
-            Self: Sized;
-        /// compares two hashes from original and altered states
-        fn compare_ids(&self) -> bool;
-        /// updates initial state
-        fn set_prior(&self, prior: T) -> Self;
-        /// intended to set updated state on completion for comparision
-        fn set_later(&self, later: T) -> Self;
-        /// write changes to logger
-        fn document(&self) -> Result<(), TErrors>;
-        /// sets the time at which change occured.
-        fn set_time_stamp(&self, time_stamp: String) -> Self;
-        /// this is experimental. it wont work for HashMap of String and Vec of T
-        fn raw_changes(&self) -> Result<(Vec<(String, String)>, Vec<(String, String)>), TErrors>;
-        /// measures success of execution
-        fn commit(&self) -> Result<Commit<T>, TErrors>;
-        /// returns true if successful operation
-        fn is_success(&self) -> Result<bool, TErrors>;
-        /// returns true if failed operation
-        fn is_failure(&self) -> Result<bool, TErrors>;
-        /// rollsback to original state on error
-        fn rollback(&self) -> Result<Logger<T>, TErrors>;
-    }
-
     pub trait ToLogAtomic<T: Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default> {
         /// create new Atomic Logger instance 
         fn new(prior: T, later: AtomicCopy, time_stamp: String) -> Self; 
@@ -174,36 +147,6 @@ pub mod elaborate {
         fn is_failure(&self) -> Result<bool, TErrors>;
         /// rollsback to original state on error
         fn rollback(&self) -> Result<AtomicLogger<T>, TErrors>;
-    }
-
-    pub trait ToLogCollect<T: Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default>
-    {
-        /// write ids based on hash of prior and later
-        fn set_hash_ids(&self) -> Result<Self, TErrors>
-        where
-            Self: Sized,
-            Collection<T>: Hash;
-        /// compares two hashes from original and altered states
-        fn compare_ids(&self) -> bool;
-        /// updates initial state
-        fn set_prior(&self, prior: Collection<T>) -> Self;
-        /// intended to set updated state on completion for comparision
-        fn set_later(&self, later: Collection<T>) -> Self;
-        /// write changes to logger
-        fn document(&self) -> Result<(), TErrors>;
-        /// sets the time at which change occured.
-        fn set_time_stamp(&self, time_stamp: String) -> Self;
-        /// makes comparison between before and after (still under development)
-        /// This has a lot more to be added.
-        fn raw_changes_collect(&self) -> Result<(Vec<T>, Vec<T>), TErrors>;
-        /// measures success of execution.
-        fn commit(&self) -> Commit<T>;
-        /// successful execution
-        fn is_success(&self) -> bool;
-        ///failed execution
-        fn is_failure(&self) -> bool;
-        /// rollsback to previous state
-        fn rollback(&self) -> Result<CollectLogger<T>, TErrors>;
     }
 
     /// simplifies code in ToHash trait
@@ -808,6 +751,31 @@ pub mod elaborate {
         }
     }
 
+    impl<T: Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default> ToHash for Collection<T> {
+        fn to_hash(&self) -> Result<HashMap<String, String>, TErrors> {
+            return Err(TErrors::None); 
+        }
+
+        fn to_hash_opt(&self) -> Result<HashMap<String, Option<String>>, TErrors> {
+            serde_json::from_value::<HashMap<String, Option<String>>>(serde_json::to_value(self.clone())?).map_err(|_| {
+                return TErrors::HashConvert; 
+            })
+        }
+
+        fn to_hash_vec(&self) -> Result<HashMap<String, Vec<String>>, TErrors> {
+            serde_json::from_value::<HashMap<String, Vec<String>>>(serde_json::to_value(self.clone())?).map_err(|_| {
+                return TErrors::HashConvert; 
+            })
+        }
+
+        fn zip(&self) -> Result<Vec<(String, String)>, TErrors> {
+            let key = self.to_hash_vec()?.keys().collect()[0]; 
+            self.to_hash_vec()?.values().collect()[0].into_iter().map(|f| {
+                (key, f)
+            }).collect()
+        }
+    }
+
     /// A simple logger for actions done
     #[derive(Serialize, Clone, Debug)]
     pub struct AtomicLogger<T: Serialize + Sized + Clone + Debug + Hash> {
@@ -926,266 +894,6 @@ pub mod elaborate {
         fn rollback(&self) -> Result<AtomicLogger<T>, TErrors> {
 
             self.set_hash_ids()?;
-
-            Ok(Self {
-                prior_id: self.prior_id.clone(),
-                later_id: self.later_id.clone(),
-                prior: self.prior.clone(),
-                later: self.later.clone(),
-                time_stamp: self.time_stamp.clone(),
-            })
-        }
-    }
-
-    #[derive(Serialize, Deserialize, Clone, Debug)]
-    pub struct Logger<T: Serialize + Sized + Clone + Debug + Hash> {
-        pub prior_id: u64,
-        pub later_id: u64,
-        pub prior: T,
-        pub later: Result<T, TErrors>,
-        pub time_stamp: String,
-    }
-    impl<T: Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default + From<AtomicCopy>> ToLog<T>
-        for Logger<T>
-    where
-        Fragment<T>: Display + ToString,
-        Collection<T>: Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default,
-        Logger<T>: Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default,
-        Collection<Logger<T>>:
-            Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default + From<Vec<u8>>,
-        AtomicLogger<T>: 
-            Default + Hash + Debug + DeserializeOwned, 
-        Collection<AtomicLogger<T>>:
-            Debug + From<Vec<u8>> + Hash + Serialize + DeserializeOwned
-
-    {
-        fn set_hash_ids(&self) -> Result<Self, TErrors> {
-            Ok(Self {
-                prior_id: write_hash(self.prior.clone()),
-                later_id: write_hash(self.later.clone()?),
-                prior: self.prior.clone(),
-                later: self.later.clone(),
-                time_stamp: self.time_stamp.clone(),
-            })
-        }
-
-        fn compare_ids(&self) -> bool {
-            self.prior_id == self.later_id
-        }
-
-        fn document(&self) -> Result<(), TErrors> {
-            let log_file: String = "./db_files/logs.json".to_string();
-            let wrapped_file: &Path = Path::new(&log_file); 
-            let mut buf: Vec<u8> = Vec::new(); 
-            let mut file: File = if wrapped_file.exists() {
-                File::open(log_file.clone()).map_err(|_|{
-                    return TErrors::FileError; 
-                })?
-            } else {
-                File::create(log_file.clone()).map_err(|_|{
-                    return TErrors::FileError; 
-                })?
-            }; 
-            file.read_to_end(&mut buf).unwrap();             
-            let mut current_logs: Collection<Logger<T>> = buf.into(); 
-            current_logs.inner.append(&mut vec![self.clone()]);
-            file.write_all(format!("{:?}", current_logs).as_bytes()).unwrap();
-            file.sync_all().unwrap(); 
-            Ok(())
-        }
-
-        fn set_prior(&self, prior: T) -> Self {
-            Self {
-                prior_id: self.prior_id.clone(),
-                later_id: self.later_id.clone(),
-                prior: prior.clone(),
-                later: self.later.clone(),
-                time_stamp: self.time_stamp.clone(),
-            }
-        }
-
-        fn set_later(&self, later: T) -> Self {
-            Self {
-                prior_id: self.prior_id.clone(),
-                later_id: self.later_id.clone(),
-                prior: self.prior.clone(),
-                later: Ok(later.clone()),
-                time_stamp: self.time_stamp.clone(),
-            }
-        }
-
-        fn set_time_stamp(&self, time_stamp: String) -> Self {
-            Self {
-                prior_id: self.prior_id.clone(),
-                later_id: self.later_id.clone(),
-                prior: self.prior.clone(),
-                later: self.later.clone(),
-                time_stamp: time_stamp.clone(),
-            }
-        }
-
-        fn raw_changes(&self) -> Result<(Vec<(String, String)>, Vec<(String, String)>), TErrors> {
-            let prior_frag: Fragment<T> = Fragment::new(self.prior.clone());
-            let later_frag: Fragment<T> = Fragment::new(self.later.clone()?);
-            let left_vec: Vec<(String, String)> = prior_frag.zip()?;
-            let right_vec: Vec<(String, String)> = later_frag.zip()?;
-            Ok((left_vec, right_vec))
-        }
-
-        fn is_success(&self) -> Result<bool, TErrors> {
-            Ok(self.commit()?.success == true)
-        }
-
-        fn is_failure(&self) -> Result<bool, TErrors> {
-            Ok(self.commit()?.success == false)
-        }
-
-        fn commit(&self) -> Result<Commit<T>, TErrors> {
-            self.set_hash_ids()?;
-            Ok(Commit::default().determine(self.later.clone(), Err(TErrors::None)))
-        }
-
-        fn rollback(&self) -> Result<Logger<T>, TErrors> {
-            if self.is_failure()? {
-                self.set_later(self.prior.clone());
-            }
-
-            self.set_hash_ids()?;
-
-            Ok(Self {
-                prior_id: self.prior_id.clone(),
-                later_id: self.later_id.clone(),
-                prior: self.prior.clone(),
-                later: self.later.clone(),
-                time_stamp: self.time_stamp.clone(),
-            })
-        }
-    }
-    /// A logger for Collection struct.
-    pub struct CollectLogger<
-        T: Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default,
-    > {
-        pub prior_id: u64,
-        pub later_id: u64,
-        pub prior: Collection<T>,
-        pub later: Result<Collection<T>, TErrors>,
-        pub time_stamp: String,
-    }
-
-    impl<T: Serialize + DeserializeOwned + Sized + Clone + Debug + PartialEq + Hash + Default>
-        ToLogCollect<T> for CollectLogger<T>
-    where
-        Collection<T>: Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default,
-        CollectLogger<T>: Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default,
-        Collection<CollectLogger<T>>:
-            Serialize + DeserializeOwned + Sized + Clone + Debug + Hash + Default + From<Vec<u8>>,
-    {
-        fn set_hash_ids(&self) -> Result<Self, TErrors>
-        where
-            Self: Sized,
-            Collection<T>: Hash,
-        {
-            Ok(Self {
-                prior_id: write_hash(self.prior.clone()),
-                later_id: write_hash(self.later.clone()?),
-                prior: self.prior.clone(),
-                later: self.later.clone(),
-                time_stamp: self.time_stamp.clone(),
-            })
-        }
-
-        fn document(&self) -> Result<(), TErrors> {
-            let log_file: String = "./db_files/logs.json".to_string();
-            let wrapped_file: &Path = Path::new(&log_file); 
-            let mut buf: Vec<u8> = Vec::new(); 
-            let mut file: File = if wrapped_file.exists() {
-                File::open(log_file.clone()).map_err(|_|{
-                    return TErrors::FileError; 
-                })?
-            } else {
-                File::create(log_file.clone()).map_err(|_|{
-                    return TErrors::FileError; 
-                })?
-            }; 
-            file.read_to_end(&mut buf).unwrap();             
-            let mut current_logs: Collection<CollectLogger<T>> = buf.into(); 
-            current_logs.inner.append(&mut vec![self.clone()]);
-            file.write_all(format!("{:?}", current_logs).as_bytes()).unwrap();
-            file.sync_all().unwrap(); 
-            Ok(())
-        }
-
-        fn compare_ids(&self) -> bool {
-            self.prior_id == self.later_id
-        }
-
-        fn set_prior(&self, prior: Collection<T>) -> Self {
-            Self {
-                prior_id: self.prior_id.clone(),
-                later_id: self.later_id.clone(),
-                prior: prior.clone(),
-                later: self.later.clone(),
-                time_stamp: self.time_stamp.clone(),
-            }
-        }
-
-        fn set_later(&self, later: Collection<T>) -> Self {
-            Self {
-                prior_id: self.prior_id.clone(),
-                later_id: self.later_id.clone(),
-                prior: self.prior.clone(),
-                later: Ok(later.clone()),
-                time_stamp: self.time_stamp.clone(),
-            }
-        }
-
-        fn set_time_stamp(&self, time_stamp: String) -> Self {
-            Self {
-                prior_id: self.prior_id.clone(),
-                later_id: self.later_id.clone(),
-                prior: self.prior.clone(),
-                later: self.later.clone(),
-                time_stamp: time_stamp.clone(),
-            }
-        }
-
-        fn raw_changes_collect(&self) -> Result<(Vec<T>, Vec<T>), TErrors> {
-            let added: Vec<T> = self
-                .later
-                .clone()?
-                .inner
-                .clone()
-                .into_iter()
-                .filter(|f| !self.prior.inner.contains(f))
-                .collect();
-            let removed: Vec<T> = self
-                .prior
-                .inner
-                .clone()
-                .into_iter()
-                .filter(|f| !self.later.clone().unwrap().inner.contains(f))
-                .collect();
-            Ok((added, removed))
-        }
-
-        fn commit(&self) -> Commit<T> {
-            Commit::default().determine(Err(TErrors::None), self.later.clone())
-        }
-
-        fn is_success(&self) -> bool {
-            self.commit().success == true
-        }
-
-        fn is_failure(&self) -> bool {
-            self.commit().success == false
-        }
-
-        fn rollback(&self) -> Result<CollectLogger<T>, TErrors> {
-            if self.is_failure() {
-                self.set_later(self.prior.clone());
-            }
-
-            self.set_hash_ids()?; 
 
             Ok(Self {
                 prior_id: self.prior_id.clone(),
